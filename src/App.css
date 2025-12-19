@@ -1,0 +1,82 @@
+(/* Catalog / shelves styles */)
+.shelf-section {
+	margin-bottom: 28px;
+	position: relative;
+	overflow: hidden;
+}
+
+.shelf-container {
+	display: flex;
+	gap: 12px;
+	overflow-x: auto;
+	padding-bottom: 6px;
+	padding-left: 44px;
+	padding-right: 44px;
+	max-width: 100%;
+}
+
+/* make sure cards align at the top so rows look even */
+.shelf-container { align-items: flex-start; }
+
+.shelf-card {
+	flex: 0 0 var(--card-width, 200px);
+	min-width: var(--card-width, 200px);
+	border: 1px solid #ddd;
+	padding: 8px;
+	border-radius: 6px;
+	background: #fff;
+	box-sizing: border-box;
+}
+
+.shelf-img {
+	/* images should fit inside the thumb without being stretched; use contain */
+	max-width: 100%;
+	max-height: 100%;
+	object-fit: contain;
+	object-position: center;
+	border-radius: 4px;
+	display: block;
+}
+
+.shelf-thumb {
+	width: 100%;
+	/* fixed thumb height derived from card width for consistent visuals */
+	height: calc(var(--card-width, 200px) * 1.5);
+	display: flex;
+	align-items: center;
+	justify-content: center;
+	overflow: hidden;
+	background: #fff;
+	border-radius: 4px;
+}
+
+/* ensure each card has consistent height so titles don't shift layout */
+.shelf-card {
+	display: flex;
+	flex-direction: column;
+	justify-content: flex-start;
+	min-height: calc(var(--card-width, 200px) * 1.5 + 56px);
+}
+
+.shelf-title {
+	margin-top: 8px;
+	font-weight: 700;
+	font-size: 12px;
+	line-height: 1.2;
+	/* keep title area approximately same height so rows align */
+	min-height: 2.4em;
+}
+
+/* responsive card widths */
+@media (max-width: 480px) {
+	:root { --card-width: 140px; }
+}
+
+@media (min-width: 481px) and (max-width: 1024px) {
+	:root { --card-width: 180px; }
+}
+
+@media (min-width: 1025px) {
+	:root { --card-width: 220px; }
+}
+
