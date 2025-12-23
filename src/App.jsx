@@ -6,9 +6,9 @@ function App() {
   return (
     <>
       <header style={{padding:12,display:'flex',gap:12,alignItems:'center',borderBottom:'1px solid #eee'}}>
-        <Link to="/">Home</Link>
-        <Link to="/catalog">Catalog</Link>
-        <Link to="/hello">Hello</Link>
+        <Link to="/">หนังสือ</Link>
+        <Link to="/forum">ฟอรัม</Link>
+        <Link to="/random">สุ่มมังงะ</Link>
       </header>
       <AppRoute />
     </>

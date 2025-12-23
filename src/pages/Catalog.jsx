@@ -5,6 +5,38 @@ export default function Catalog(){
   const [mangas, setMangas] = useState([])
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState(null)
+  const [selectedManga, setSelectedManga] = useState(null)
+  const [detailLoading, setDetailLoading] = useState(false)
+
+  const openManga = async (m) => {
+    // show modal immediately with basic data, then fetch full record from Supabase
+    setSelectedManga({ ...m, _loading: true })
+    setDetailLoading(true)
+    try {
+      const { data, error } = await supabase.from('Manga').select('*').eq('id', m.id).single()
+      if (!error && data) {
+        const bucket = import.meta.env.VITE_SUPABASE_BUCKET || 'covers'
+        let imageUrl = m.imageUrl || null
+        if (!imageUrl && data.cover) {
+          if (/^https?:\/\//i.test(data.cover)) imageUrl = data.cover
+          else { try { imageUrl = supabase.storage.from(bucket).getPublicUrl(data.cover)?.data?.publicUrl || null } catch(e) { imageUrl = null } }
+        }
+        let tagsArray = []
+        if (data.tags) {
+          if (Array.isArray(data.tags)) tagsArray = data.tags.map(t => String(t).trim()).filter(Boolean)
+          else if (typeof data.tags === 'string') tagsArray = data.tags.split(',').map(s => s.trim()).filter(Boolean)
+        }
+        setSelectedManga({ ...m, ...data, imageUrl, tags: tagsArray, _loading: false })
+      } else {
+        setSelectedManga({ ...m, _loading: false })
+      }
+    } catch (e) {
+      console.error('fetch detail', e)
+      setSelectedManga({ ...m, _loading: false })
+    } finally {
+      setDetailLoading(false)
+    }
+  }
 
   useEffect(() => {
     let mounted = true
@@ -49,9 +81,7 @@ export default function Catalog(){
           if (Array.isArray(item.tags)) tagsArray = item.tags.map(t => String(t).trim()).filter(Boolean)
           else if (typeof item.tags === 'string') tagsArray = item.tags.split(',').map(s => s.trim()).filter(Boolean)
         }
-        const primaryTag = tagsArray.length > 0 ? tagsArray[0] : 'Untagged'
-
-        return { ...item, imageUrl, tags: tagsArray, primaryTag }
+        return { ...item, imageUrl, tags: tagsArray }
       }
 
       let normalized = (data || []).map(normalizeItem)
@@ -129,8 +159,7 @@ export default function Catalog(){
               if (Array.isArray(item.tags)) tagsArray = item.tags.map(t => String(t).trim()).filter(Boolean)
               else if (typeof item.tags === 'string') tagsArray = item.tags.split(',').map(s => s.trim()).filter(Boolean)
             }
-            const primaryTag = tagsArray.length > 0 ? tagsArray[0] : 'Untagged'
-            return { ...item, imageUrl, tags: tagsArray, primaryTag }
+            return { ...item, imageUrl, tags: tagsArray }
           })
 
           if (newItems.length === 0) {
@@ -172,12 +201,24 @@ export default function Catalog(){
       mangas.forEach(m => {
         (m.tags || []).forEach(tag => {
           if (!shelves[tag]) {
-            shelves[tag] = { primary: [], secondary: [] }
+            shelves[tag] = { primary: [] }
             tagOrder.push(tag)
           }
-          if (tag === m.primaryTag) shelves[tag].primary.push(m)
-          else shelves[tag].secondary.push(m)
+          shelves[tag].primary.push(m)
         })
+      })
+
+      // Ensure within each shelf primary items come first (left) and secondary items are on the right.
+      // Also sort within each group by created_at (newest first) when that field exists.
+      Object.keys(shelves).forEach(tag => {
+        const hasUpdatedAt = (shelves[tag].primary || []).some(i => typeof i.updated_at !== 'undefined')
+        if (hasUpdatedAt) {
+          const sortByUpdated = (a, b) => new Date(b.updated_at) - new Date(a.updated_at)
+          shelves[tag].primary = (shelves[tag].primary || []).slice().sort(sortByUpdated)
+        } else {
+          // keep insertion order but ensure arrays are shallow-copied to avoid mutation surprises
+          shelves[tag].primary = (shelves[tag].primary || []).slice()
+        }
       })
 
       // Sort tags alphabetically for consistent order, but keep 'Untagged' at the end
@@ -192,7 +233,7 @@ export default function Catalog(){
       <h2>Bookshelves</h2>
       {sortedTags.length === 0 && <div>No tags found.</div>}
       {sortedTags.map(tag => {
-        const items = [...(shelves[tag].primary || []), ...(shelves[tag].secondary || [])]
+        const items = (shelves[tag].primary || [])
         return (
           <section key={tag} style={{marginBottom:28, position:'relative', overflow:'hidden'}}>
             <h3 style={{margin:0, marginBottom:8}}>{tag}</h3>
@@ -227,7 +268,7 @@ export default function Catalog(){
               className="shelf-container"
             >
               {(items.slice(0, visibleCounts[tag] || DEFAULT_VISIBLE)).map(m => (
-                <div key={m.id} className="shelf-card">
+                <div key={m.id} className="shelf-card" onClick={() => openManga(m)} style={{cursor:'pointer'}} role="button" tabIndex={0} aria-label={`Open ${m.title}`}>
                   {m.imageUrl ? (
                     <div className="shelf-thumb">
                       <img src={m.imageUrl} alt={m.title} className="shelf-img"/>
@@ -276,6 +317,67 @@ export default function Catalog(){
           </section>
         )
       })}
+      {/* Modal for selected manga */}
+      {selectedManga ? (
+        <div onClick={()=>setSelectedManga(null)} style={{position:'fixed', inset:0, background:'rgba(0,0,0,0.5)', display:'flex', alignItems:'center', justifyContent:'center', zIndex:60}}>
+          <div onClick={e=>e.stopPropagation()} style={{width:680, maxWidth:'95%', background:'#fff', borderRadius:8, padding:18, boxShadow:'0 10px 40px rgba(0,0,0,0.4)'}}>
+            <div style={{display:'flex', gap:16}}>
+              <div style={{width:220, flex:'0 0 auto'}}>
+                {selectedManga.imageUrl ? <img src={selectedManga.imageUrl} alt={selectedManga.title} style={{width:'100%', height:320, objectFit:'contain', borderRadius:6}} /> : <div style={{width:'100%', height:320, background:'#f2f2f2', borderRadius:6}} />}
+              </div>
+              <div style={{flex:1}}>
+                <div style={{display:'flex', justifyContent:'space-between', alignItems:'start'}}>
+                  <div>
+                    <h3 style={{margin:0}}>{selectedManga.title}</h3>
+                    <div style={{color:'#666', marginTop:6}}>{(selectedManga.tags||[]).join(', ') || 'Untagged'}</div>
+                  </div>
+                  <button onClick={()=>setSelectedManga(null)} style={{border:'none', background:'transparent', fontSize:20, cursor:'pointer'}}>✕</button>
+                </div>
+                <div style={{marginTop:12, color:'#333'}}>
+                  {selectedManga._loading ? (
+                    <div>กำลังโหลดข้อมูล...</div>
+                  ) : (
+                    <div>
+                      <div style={{marginBottom:8}}>
+                        <div style={{marginTop:6, fontSize:14, lineHeight:1.45}}>{selectedManga.description || 'ไม่มีข้อมูลคำอธิบาย'}</div>
+                      </div>
+
+                      {/* show common fields with nice labels first */}
+                      <div style={{marginTop:8}}>
+                        {selectedManga.author && (
+                          <div style={{marginBottom:6}}><strong>Author:</strong> <span style={{color:'#333'}}>{selectedManga.author}</span></div>
+                        )}
+                        {selectedManga.publisher && (
+                          <div style={{marginBottom:6}}><strong>Publisher:</strong> <span style={{color:'#333'}}>{selectedManga.publisher}</span></div>
+                        )}
+                        {selectedManga.volume && (
+                          <div style={{marginBottom:6}}><strong>Volume:</strong> <span style={{color:'#333'}}>{selectedManga.volume}</span></div>
+                        )}
+                        {selectedManga.status && (
+                          <div style={{marginBottom:6}}><strong>Status:</strong> <span style={{color:'#333'}}>{selectedManga.status}</span></div>
+                        )}
+                        {selectedManga.updated_at && (
+                          <div style={{marginBottom:6}}><strong>Update:</strong> <span style={{color:'#333'}}>{String(selectedManga.updated_at)}</span></div>
+                        )}
+                      </div>
+
+                      {/* show any remaining fields */}
+                      <div style={{marginTop:10}}>
+                        {Object.entries(selectedManga).filter(([k]) => !['imageUrl','id','cover','tags','title','_loading','description','author','publisher','volume','status','updated_at'].includes(k)).map(([k,v]) => (
+                          <div key={k} style={{marginBottom:8}}>
+                            <strong style={{textTransform:'capitalize'}}>{k.replace(/_/g,' ')}:</strong>
+                            <div style={{color:'#333'}}>{Array.isArray(v) ? v.join(', ') : (typeof v === 'object' ? JSON.stringify(v) : String(v))}</div>
+                          </div>
+                        ))}
+                      </div>
+                    </div>
+                  )}
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+      ) : null}
     </div>
   )
 }
