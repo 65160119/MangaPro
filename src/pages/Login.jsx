@@ -36,8 +36,11 @@ export default function Login(){
           {error && <div style={{color:'red', fontSize:13}}>{error}</div>}
           <button type="submit" disabled={loading} style={{padding:'10px 12px', borderRadius:8, background:'#0b79ff', color:'#fff', border:'none', fontWeight:600}}>{loading ? 'Signing in...' : 'Login'}</button>
         </form>
-        <div style={{marginTop:12, textAlign:'center'}}>
+        <div style={{marginTop:12, textAlign:'center', display:'flex', justifyContent:'space-between', gap:8}}>
           <Link to="/forgot-password" style={{color:'#0b79ff', fontSize:13}}>Forgot password?</Link>
+          <div style={{marginLeft:'auto', fontSize:13}}>
+            Don't have an account? <Link to="/signup" style={{color:'#0b79ff'}}>Register</Link>
+          </div>
         </div>
       </div>
     </div>
