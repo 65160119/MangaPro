@@ -1,8 +1,42 @@
 import React, { useEffect, useState, useRef, useCallback } from 'react'
 import supabase from '../lib/supabaseClient'
+import useFavorite from '../lib/favorites'
+import { useAuth } from '../context/Auth'
+
+// Small favorite overlay (used on cards)
+function FavoriteButtonSmall({ mangaId, onClick }){
+  const { user } = useAuth()
+  const { isFavorite, loading, toggle } = useFavorite(mangaId)
+  if (!user) return null
+  const title = isFavorite ? 'เลิกชอบ' : 'เพิ่มในรายการโปรด'
+  return (
+    <button
+      title={title}
+      onClick={(e)=>{ e.stopPropagation(); if(onClick) onClick(e); toggle() }}
+      style={{position:'absolute', top:8, right:8, zIndex:20, border:'none', background:'rgba(255,255,255,0.9)', padding:6, borderRadius:6, cursor:'pointer'}}
+    >
+      <span style={{color: isFavorite ? '#e0245e' : '#666'}}>{isFavorite ? '♥' : '♡'}</span>
+    </button>
+  )
+}
+
+// Larger favorite button (used in modal)
+function FavoriteButtonLarge({ mangaId }){
+  const { user } = useAuth()
+  const { isFavorite, loading, toggle } = useFavorite(mangaId)
+  if (!user) return null
+  const label = isFavorite ? 'เลิกชอบ' : 'เพิ่มในรายการโปรด'
+  return (
+    <button onClick={async (e)=>{ e.stopPropagation(); if (!user) return alert('โปรดล็อกอินก่อน'); await toggle() }} style={{padding:'6px 10px', borderRadius:8, background:isFavorite? '#ffeef0' : '#f1f5f9', border:'1px solid #ddd', cursor:'pointer'}}>
+      {label}
+    </button>
+  )
+}
 
 export default function Catalog(){
   const [mangas, setMangas] = useState([])
+  const [favorites, setFavorites] = useState([])
+  const [search, setSearch] = useState('')
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState(null)
   const [selectedManga, setSelectedManga] = useState(null)
@@ -45,7 +79,7 @@ export default function Catalog(){
       // Note: adjust table name to your actual table (e.g., 'Manga' or 'manga')
       const { data, error } = await supabase
         .from('Manga')
-        .select('id, title, cover, tags')
+        .select('id, title, cover, tags, update')
         .limit(100)
 
       console.log('Supabase fetch:', { dataSample: (data || []).slice(0,5), error })
@@ -98,6 +132,52 @@ export default function Catalog(){
     load()
     return () => { mounted = false }
   }, [])
+
+  // fetch user's favorite mangas
+  const { user } = useAuth()
+  useEffect(()=>{
+    let mounted = true
+    async function fetchFavorites(){
+      setFavorites([])
+      if (!user) return
+      try{
+        const { data: favs, error: favErr } = await supabase
+          .from('User_Favorite')
+          .select('manga_id')
+          .eq('user_id', user.id)
+
+        if (favErr) { console.warn('fav list err', favErr); return }
+        const ids = (favs || []).map(f => f.manga_id).filter(Boolean)
+        if (ids.length === 0) { setFavorites([]); return }
+        const { data: mangasData, error: mangasErr } = await supabase
+          .from('Manga')
+          .select('id, title, cover, tags')
+          .in('id', ids)
+
+        if (mangasErr) { console.warn('fav manga fetch err', mangasErr); setFavorites([]); return }
+
+        const bucket = import.meta.env.VITE_SUPABASE_BUCKET || 'covers'
+        const normalizeItem = (item) => {
+          let imageUrl = null
+          if (item.cover) {
+            if (/^https?:\/\//i.test(item.cover)) imageUrl = item.cover
+            else { try { imageUrl = supabase.storage.from(bucket).getPublicUrl(item.cover)?.data?.publicUrl || null } catch(e){ imageUrl = null } }
+          }
+          let tagsArray = []
+          if (item.tags) {
+            if (Array.isArray(item.tags)) tagsArray = item.tags.map(t => String(t).trim()).filter(Boolean)
+            else if (typeof item.tags === 'string') tagsArray = item.tags.split(',').map(s => s.trim()).filter(Boolean)
+          }
+          return { ...item, imageUrl, tags: tagsArray }
+        }
+
+        if (!mounted) return
+        setFavorites((mangasData || []).map(normalizeItem))
+      }catch(e){ console.warn('fetchFavorites', e); setFavorites([]) }
+    }
+    fetchFavorites()
+    return ()=>{ mounted = false }
+  }, [user])
 
       // refs for each shelf container to control scrolling
       const shelfRefs = useRef({})
@@ -198,7 +278,9 @@ export default function Catalog(){
       // Build shelves grouped by tag: primary first, then secondary
       const shelves = {}
       const tagOrder = []
-      mangas.forEach(m => {
+      // use filtered list when searching
+      const sourceList = search ? mangas.filter(x => String(x.title || '').toLowerCase().includes(search.toLowerCase())) : mangas
+      sourceList.forEach(m => {
         (m.tags || []).forEach(tag => {
           if (!shelves[tag]) {
             shelves[tag] = { primary: [] }
@@ -211,10 +293,10 @@ export default function Catalog(){
       // Ensure within each shelf primary items come first (left) and secondary items are on the right.
       // Also sort within each group by created_at (newest first) when that field exists.
       Object.keys(shelves).forEach(tag => {
-        const hasUpdatedAt = (shelves[tag].primary || []).some(i => typeof i.updated_at !== 'undefined')
-        if (hasUpdatedAt) {
-          const sortByUpdated = (a, b) => new Date(b.updated_at) - new Date(a.updated_at)
-          shelves[tag].primary = (shelves[tag].primary || []).slice().sort(sortByUpdated)
+        const hasUpdate = (shelves[tag].primary || []).some(i => typeof i.update !== 'undefined')
+        if (hasUpdate) {
+          const sortByUpdate = (a, b) => new Date(b.update) - new Date(a.update)
+          shelves[tag].primary = (shelves[tag].primary || []).slice().sort(sortByUpdate)
         } else {
           // keep insertion order but ensure arrays are shallow-copied to avoid mutation surprises
           shelves[tag].primary = (shelves[tag].primary || []).slice()
@@ -231,6 +313,46 @@ export default function Catalog(){
   return (
     <div style={{padding:20}}>
       <h2>Bookshelves</h2>
+      {/* Search bar */}
+      <div style={{marginBottom:12, display:'flex', alignItems:'center', gap:12}}>
+        <input value={search} onChange={e=>setSearch(e.target.value)} placeholder="ค้นหาชื่อมังงะ" style={{padding:10, borderRadius:8, border:'1px solid #e5e7eb', width:360}} />
+        <div style={{color:'#666'}}></div>
+      </div>
+      {/* Latest updates row */}
+      <section style={{marginBottom:20}}>
+        <h3 style={{marginTop:6}}>อัพเดตล่าสุด</h3>
+        <div style={{display:'flex', gap:12, overflowX:'auto', paddingTop:8}}>
+          {(() => {
+            const latest = mangas.slice().filter(m=>m.update).sort((a,b)=> new Date(b.update) - new Date(a.update)).slice(0,12)
+            if (latest.length === 0) return <div style={{color:'#666'}}>ยังไม่มีการอัพเดต</div>
+            return latest.map(m => (
+              <div key={m.id} style={{width:120, cursor:'pointer'}} onClick={() => openManga(m)}>
+                {m.imageUrl ? <img src={m.imageUrl} alt={m.title} style={{width:'100%', height:180, objectFit:'cover', borderRadius:6}} /> : <div style={{width:'100%', height:180, background:'#eee', borderRadius:6}} />}
+                <div style={{fontSize:13, marginTop:6, whiteSpace:'nowrap', overflow:'hidden', textOverflow:'ellipsis'}}>{m.title}</div>
+                <div style={{fontSize:11, color:'#666'}}>{new Date(m.update).toLocaleDateString()}</div>
+              </div>
+            ))
+          })()}
+        </div>
+      </section>
+      {/* Favorites section for logged-in user */}
+      {user && (
+        <section style={{marginBottom:20}}>
+          <h3 style={{marginTop:6}}>รายการโปรดของฉัน</h3>
+          {favorites.length === 0 ? (
+            <div style={{color:'#666'}}>คุณยังไม่มีรายการโปรด</div>
+          ) : (
+            <div style={{display:'flex', gap:12, overflowX:'auto', paddingTop:8}}>
+              {favorites.map(f => (
+                <div key={f.id} style={{width:120, cursor:'pointer'}} onClick={() => openManga(f)}>
+                  {f.imageUrl ? <img src={f.imageUrl} alt={f.title} style={{width:'100%', height:180, objectFit:'cover', borderRadius:6}} /> : <div style={{width:'100%', height:180, background:'#eee', borderRadius:6}} />}
+                  <div style={{fontSize:13, marginTop:6, whiteSpace:'nowrap', overflow:'hidden', textOverflow:'ellipsis'}}>{f.title}</div>
+                </div>
+              ))}
+            </div>
+          )}
+        </section>
+      )}
       {sortedTags.length === 0 && <div>No tags found.</div>}
       {sortedTags.map(tag => {
         const items = (shelves[tag].primary || [])
@@ -268,7 +390,7 @@ export default function Catalog(){
               className="shelf-container"
             >
               {(items.slice(0, visibleCounts[tag] || DEFAULT_VISIBLE)).map(m => (
-                <div key={m.id} className="shelf-card" onClick={() => openManga(m)} style={{cursor:'pointer'}} role="button" tabIndex={0} aria-label={`Open ${m.title}`}>
+                <div key={m.id} className="shelf-card" onClick={() => openManga(m)} style={{cursor:'pointer', position:'relative'}} role="button" tabIndex={0} aria-label={`Open ${m.title}`}>
                   {m.imageUrl ? (
                     <div className="shelf-thumb">
                       <img src={m.imageUrl} alt={m.title} className="shelf-img"/>
@@ -277,6 +399,8 @@ export default function Catalog(){
                     <div style={{width:'100%', aspectRatio:'2/3', background:'#eee', display:'flex', alignItems:'center', justifyContent:'center', borderRadius:4}}>No cover</div>
                   )}
                   <div className="shelf-title">{m.title}</div>
+                  {/* Favorite button overlay */}
+                  <FavoriteButtonSmall mangaId={m.id} onClick={(e)=>{ e.stopPropagation(); }} />
                 </div>
               ))}
             </div>
@@ -326,12 +450,15 @@ export default function Catalog(){
                 {selectedManga.imageUrl ? <img src={selectedManga.imageUrl} alt={selectedManga.title} style={{width:'100%', height:320, objectFit:'contain', borderRadius:6}} /> : <div style={{width:'100%', height:320, background:'#f2f2f2', borderRadius:6}} />}
               </div>
               <div style={{flex:1}}>
-                <div style={{display:'flex', justifyContent:'space-between', alignItems:'start'}}>
+                  <div style={{display:'flex', justifyContent:'space-between', alignItems:'start'}}>
                   <div>
                     <h3 style={{margin:0}}>{selectedManga.title}</h3>
                     <div style={{color:'#666', marginTop:6}}>{(selectedManga.tags||[]).join(', ') || 'Untagged'}</div>
                   </div>
-                  <button onClick={()=>setSelectedManga(null)} style={{border:'none', background:'transparent', fontSize:20, cursor:'pointer'}}>✕</button>
+                  <div style={{display:'flex', gap:8, alignItems:'center'}}>
+                    <FavoriteButtonLarge mangaId={selectedManga.id} />
+                    <button onClick={()=>setSelectedManga(null)} style={{border:'none', background:'transparent', fontSize:20, cursor:'pointer'}}>✕</button>
+                  </div>
                 </div>
                 <div style={{marginTop:12, color:'#333'}}>
                   {selectedManga._loading ? (
@@ -356,14 +483,14 @@ export default function Catalog(){
                         {selectedManga.status && (
                           <div style={{marginBottom:6}}><strong>Status:</strong> <span style={{color:'#333'}}>{selectedManga.status}</span></div>
                         )}
-                        {selectedManga.updated_at && (
-                          <div style={{marginBottom:6}}><strong>Update:</strong> <span style={{color:'#333'}}>{String(selectedManga.updated_at)}</span></div>
+                        {selectedManga.update && (
+                          <div style={{marginBottom:6}}><strong>Update:</strong> <span style={{color:'#333'}}>{String(selectedManga.update)}</span></div>
                         )}
                       </div>
 
                       {/* show any remaining fields */}
                       <div style={{marginTop:10}}>
-                        {Object.entries(selectedManga).filter(([k]) => !['imageUrl','id','cover','tags','title','_loading','description','author','publisher','volume','status','updated_at'].includes(k)).map(([k,v]) => (
+                        {Object.entries(selectedManga).filter(([k]) => !['imageUrl','id','cover','tags','title','_loading','description','author','publisher','volume','status','update'].includes(k)).map(([k,v]) => (
                           <div key={k} style={{marginBottom:8}}>
                             <strong style={{textTransform:'capitalize'}}>{k.replace(/_/g,' ')}:</strong>
                             <div style={{color:'#333'}}>{Array.isArray(v) ? v.join(', ') : (typeof v === 'object' ? JSON.stringify(v) : String(v))}</div>
