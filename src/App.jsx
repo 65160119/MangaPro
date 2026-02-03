@@ -13,10 +13,15 @@ function HeaderAuth(){
       <Link to="/random">สุ่มมังงะ</Link>
       <div style={{marginLeft:'auto'}}>
         {user ? (
-          <>
-            <span style={{marginRight:12}}>Signed in: {user.email}</span>
-            <button onClick={()=>signOut()} style={{padding:'6px 10px', borderRadius:6}}>Logout</button>
-          </>
+          (() => {
+            const displayName = user?.email ? String(user.email).split('@')[0] : user?.email
+            return (
+              <>
+                <span title={user?.email} style={{marginRight:12}}>Signed in: {displayName}</span>
+                <button onClick={()=>signOut()} style={{padding:'6px 10px', borderRadius:6}}>Logout</button>
+              </>
+            )
+          })()
         ) : (
           <>
             <Link to="/login">Login</Link>

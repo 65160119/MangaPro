@@ -9,7 +9,7 @@ function PostCard({post, onDelete, onAddComment, user}){
       <div style={{display:'flex', justifyContent:'space-between', alignItems:'center'}}>
         <div>
           <strong>{post.title}</strong>
-          <div style={{fontSize:12,color:'#666'}}>{post.user_email || 'Anonymous'} · {new Date(post.created_at).toLocaleString()}</div>
+          <div style={{fontSize:12,color:'#666'}}>{post.user_name || 'Anonymous'} · {new Date(post.created_at).toLocaleString()}</div>
         </div>
         {user && post.user_id === user.id && (
           <button onClick={()=>onDelete(post.id)} style={{background:'transparent',border:'none',color:'#c00'}}>Delete</button>
@@ -20,7 +20,7 @@ function PostCard({post, onDelete, onAddComment, user}){
       <div style={{marginTop:10}}>
         {(post.comments || []).map(c=> (
           <div key={c.id} style={{padding:8, background:'#fafafa', borderRadius:6, marginBottom:6}}>
-            <div style={{fontSize:13}}><strong>{c.user_email || 'Anonymous'}</strong> <span style={{color:'#666', fontSize:12}}>{new Date(c.created_at).toLocaleString()}</span></div>
+            <div style={{fontSize:13}}><strong>{c.user_name || 'Anonymous'}</strong> <span style={{color:'#666', fontSize:12}}>{new Date(c.created_at).toLocaleString()}</span></div>
             <div style={{marginTop:6}}>{c.content}</div>
           </div>
         ))}
@@ -46,6 +46,15 @@ export default function Forum(){
   const [content, setContent] = useState('')
   const [error, setError] = useState(null)
 
+  // show overlay on every visit; accept hides only for current session
+  const [spoilerDismissed, setSpoilerDismissed] = useState(false)
+
+  // lock body scroll while the spoiler overlay is visible
+  useEffect(() => {
+    try { document.body.style.overflow = spoilerDismissed ? '' : 'hidden' } catch {}
+    return () => { try { document.body.style.overflow = '' } catch {} }
+  }, [spoilerDismissed])
+
   useEffect(()=>{ fetchPosts() }, [])
 
   async function fetchPosts(){
@@ -60,24 +69,28 @@ export default function Forum(){
 
     const postsList = postsData || []
 
-    // 2) gather user_ids and try to fetch profile emails from `profiles` table
-    const userIds = [...new Set(postsList.map(p => p.user_id).filter(Boolean))]
+    // 2) gather user_ids (from posts and comments) and fetch usernames from `profiles` table
+    const userIds = [...new Set(postsList.flatMap(p => [p.user_id].concat((p.Forum_comment || []).map(c=>c.user_id))).filter(Boolean))]
     let profilesMap = {}
     if (userIds.length > 0){
       const { data: profilesData, error: profilesErr } = await supabase
-        .from('profiles')
-        .select('id, email')
+        .from('Profiles')
+        .select('id, user_name')
         .in('id', userIds)
 
       if (!profilesErr && profilesData){
-        profilesMap = Object.fromEntries(profilesData.map(r => [r.id, r.email]))
+        profilesMap = Object.fromEntries(profilesData.map(r => [r.id, r.user_name]))
       }
     }
 
+    // Normalize posts/comments: use profiles.username; if missing, show null (render will fallback to 'Anonymous')
     const normalized = postsList.map(p => ({
       ...p,
-      user_email: profilesMap[p.user_id] ?? p.user_email ?? null,
-      comments: (p.Forum_comment || []).map(c=> ({...c}))
+      user_name: profilesMap[p.user_id] ?? null,
+      comments: (p.Forum_comment || []).map(c=> ({
+        ...c,
+        user_name: profilesMap[c.user_id] ?? null
+      }))
     }))
 
     setPosts(normalized)
@@ -96,8 +109,9 @@ export default function Forum(){
     }
     const { data, error } = await supabase.from('Forum_post').insert([insert]).select().single()
     if (error){ setError(error.message); return }
+    // clear form and refresh posts so display names come from `profiles.username`
     setTitle(''); setContent('')
-    fetchPosts()
+    await fetchPosts()
   }
 
   async function handleDelete(postId){
@@ -112,12 +126,24 @@ export default function Forum(){
     const insert = { content: text.trim(), post_id: postId, user_id: user.id }
     const { data, error } = await supabase.from('Forum_comment').insert([insert]).select().single()
     if (error){ setError(error.message); return }
-    fetchPosts()
+    // refresh posts so comment display names come from `profiles.username`
+    await fetchPosts()
   }
 
   return (
     <div style={{padding:20, maxWidth:900, margin:'0 auto'}}>
       <h2>ฟอรัม</h2>
+      {!spoilerDismissed && (
+        <div style={{position:'fixed', inset:0, background:'rgba(0,0,0,0.6)', zIndex:9999, display:'flex', alignItems:'center', justifyContent:'center'}}>
+          <div role="dialog" aria-modal="true" style={{background:'#fff', padding:22, borderRadius:10, maxWidth:760, width:'92%', boxShadow:'0 10px 30px rgba(0,0,0,0.32)'}}>
+            <h3 style={{margin:0, marginBottom:8}}>คำเตือน: ฟอรัมอาจมีสปอย</h3>
+            <p style={{margin:0, marginBottom:16, color:'#333'}}>เนื้อหาในฟอรัมอาจเปิดเผยเนื้อหาสำคัญ (spoilers) โปรดกดปุ่มยอมรับเพื่อดำเนินการต่อ</p>
+            <div style={{display:'flex', justifyContent:'flex-end', gap:8}}>
+              <button onClick={()=>setSpoilerDismissed(true)} style={{background:'#0b79ff', color:'#fff', border:'none', padding:'8px 12px', borderRadius:6}}>ยอมรับ</button>
+            </div>
+          </div>
+        </div>
+      )}
       {error && <div style={{color:'red', marginBottom:8}}>{error}</div>}
 
       {user ? (

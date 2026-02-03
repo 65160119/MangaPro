@@ -182,6 +182,25 @@ export default function Catalog(){
       // refs for each shelf container to control scrolling
       const shelfRefs = useRef({})
 
+      // Build search URLs for external stores using the manga title (do not store links in DB)
+      const buildStoreSearchUrl = (site, title) => {
+        const q = encodeURIComponent(String(title || '').trim())
+        switch ((site || '').toLowerCase()){
+          case 'shopee':
+            return `https://shopee.co.th/search?keyword=${q}`
+          case 'lazada':
+            return `https://www.lazada.co.th/catalog/?q=${q}`
+          case 'yaakz':
+            return `https://www.yaakz.com/search/?q=${q}`
+          case 'naiin':
+            return `https://www.naiin.com/search-result?title=${q}`
+          case 'bookwalker':
+            return `https://bookwalker.in.th/search/?word=${q}&order=relevance&page=1`
+          default:
+            return `https://www.google.com/search?q=${q}`
+        }
+      }
+
       // visible counts per shelf for "load more" (client-side)
       const [visibleCounts, setVisibleCounts] = useState({})
       const DEFAULT_VISIBLE = 20
@@ -465,9 +484,37 @@ export default function Catalog(){
                     <div>กำลังโหลดข้อมูล...</div>
                   ) : (
                     <div>
-                      <div style={{marginBottom:8}}>
-                        <div style={{marginTop:6, fontSize:14, lineHeight:1.45}}>{selectedManga.description || 'ไม่มีข้อมูลคำอธิบาย'}</div>
-                      </div>
+                        <div style={{marginBottom:8}}>
+                          <div style={{marginTop:6, fontSize:14, lineHeight:1.45}}>{selectedManga.description || 'ไม่มีข้อมูลคำอธิบาย'}</div>
+                        </div>
+
+                        {/* External store search links (generated on the fly, not stored) */}
+                        <div style={{marginTop:10, marginBottom:8}}>
+                          <div style={{fontSize:13, fontWeight:600, marginBottom:6}}>หาซื้อได้ที่</div>
+                          <div style={{display:'flex', gap:8, flexWrap:'wrap'}}>
+                            {
+                              (() => {
+                                const stores = [
+                                  { key: 'shopee', label: 'Shopee', color: '#ff6d00' },
+                                  { key: 'lazada', label: 'Lazada', color: '#ff5a5f' },
+                                  { key: 'yaakz', label: 'Yaakz', color: '#0b73b7' },
+                                  { key: 'naiin', label: 'นายอินทร์', color: '#0066cc' },
+                                  { key: 'bookwalker', label: 'BookWalker', color: '#2b2b2b' }
+                                ]
+                                return stores.map(s => {
+                                  const url = buildStoreSearchUrl(s.key, selectedManga.title)
+                                  return (
+                                    <a key={s.key}
+                                      href={url}
+                                      onClick={e => { e.preventDefault(); try { window.open(url, '_blank', 'noopener') } catch { window.location.href = url } }}
+                                      style={{padding:'6px 10px', background:s.color, color:'#fff', borderRadius:6, textDecoration:'none'}}
+                                    >{s.label}</a>
+                                  )
+                                })
+                              })()
+                            }
+                          </div>
+                        </div>
 
                       {/* show common fields with nice labels first */}
                       <div style={{marginTop:8}}>
@@ -480,22 +527,37 @@ export default function Catalog(){
                         {selectedManga.volume && (
                           <div style={{marginBottom:6}}><strong>Volume:</strong> <span style={{color:'#333'}}>{selectedManga.volume}</span></div>
                         )}
-                        {selectedManga.status && (
-                          <div style={{marginBottom:6}}><strong>Status:</strong> <span style={{color:'#333'}}>{selectedManga.status}</span></div>
-                        )}
-                        {selectedManga.update && (
-                          <div style={{marginBottom:6}}><strong>Update:</strong> <span style={{color:'#333'}}>{String(selectedManga.update)}</span></div>
-                        )}
                       </div>
 
-                      {/* show any remaining fields */}
+                      {/* show status + update next (status first, then update), then remaining fields like Random page */}
                       <div style={{marginTop:10}}>
-                        {Object.entries(selectedManga).filter(([k]) => !['imageUrl','id','cover','tags','title','_loading','description','author','publisher','volume','status','update'].includes(k)).map(([k,v]) => (
-                          <div key={k} style={{marginBottom:8}}>
-                            <strong style={{textTransform:'capitalize'}}>{k.replace(/_/g,' ')}:</strong>
-                            <div style={{color:'#333'}}>{Array.isArray(v) ? v.join(', ') : (typeof v === 'object' ? JSON.stringify(v) : String(v))}</div>
-                          </div>
-                        ))}
+                        {(() => {
+                          const excluded = new Set(['imageUrl','id','cover','tags','title','_loading','description','author','publisher','volume'])
+                          const entries = Object.entries(selectedManga).filter(([k]) => !excluded.has(k))
+                          // place status first, update second if present
+                          const order = ['status','update']
+                          const ordered = []
+                          const rest = []
+                          entries.forEach(([k,v]) => {
+                            if (order.includes(k)) ordered.push([k,v])
+                            else rest.push([k,v])
+                          })
+                          const final = [...ordered, ...rest]
+                          return final.map(([k,v]) => {
+                            let display = ''
+                            if (k === 'update' && v) {
+                              try { display = new Date(v).toLocaleDateString() } catch { display = String(v) }
+                            } else if (Array.isArray(v)) display = v.join(', ')
+                            else if (typeof v === 'object') display = JSON.stringify(v)
+                            else display = String(v)
+                            return (
+                              <div key={k} style={{marginBottom:8}}>
+                                <strong style={{textTransform:'capitalize'}}>{k.replace(/_/g,' ')}:</strong>
+                                <div style={{color:'#333'}}>{display}</div>
+                              </div>
+                            )
+                          })
+                        })()}
                       </div>
                     </div>
                   )}
