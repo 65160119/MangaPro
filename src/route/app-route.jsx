@@ -10,6 +10,8 @@ import UpdatePassword from "../pages/UpdatePassword";
 import AuthConfirm from "../pages/AuthConfirm";
 import AuthError from "../pages/AuthError";
 import Logout from "../pages/Logout";
+import Status from "../pages/Status";
+import MyList from "../pages/MyList";
 import Protected from "../pages/Protected";
 import RequireAuth from "../components/RequireAuth";
 
@@ -28,6 +30,8 @@ export default function AppRoute() {
             <Route path="/auth/confirm" element={<AuthConfirm />} />
             <Route path="/auth/error" element={<AuthError />} />
             <Route path="/logout" element={<Logout />} />
+            <Route path="/status" element={<Status />} />
+            <Route path="/my-list" element={<MyList />} />
             <Route path="/protected" element={<RequireAuth><Protected /></RequireAuth>} />
         </Routes>
     );

@@ -17,7 +17,7 @@ function HeaderAuth(){
             const displayName = user?.email ? String(user.email).split('@')[0] : user?.email
             return (
               <>
-                <span title={user?.email} style={{marginRight:12}}>Signed in: {displayName}</span>
+                <Link to="/status" title={user?.email} style={{marginRight:12, textDecoration:'none', color:'inherit', cursor:'pointer'}}>Signed in: {displayName}</Link>
                 <button onClick={()=>signOut()} style={{padding:'6px 10px', borderRadius:6}}>Logout</button>
               </>
             )

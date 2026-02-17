@@ -1,6 +1,8 @@
 import React, { useEffect, useState, useRef, useCallback } from 'react'
 import supabase from '../lib/supabaseClient'
 import useFavorite from '../lib/favorites'
+import RatingStars from '../components/RatingStars'
+import AddToListForm from '../components/AddToListForm'
 import { useAuth } from '../context/Auth'
 
 // Small favorite overlay (used on cards)
@@ -35,12 +37,13 @@ function FavoriteButtonLarge({ mangaId }){
 
 export default function Catalog(){
   const [mangas, setMangas] = useState([])
-  const [favorites, setFavorites] = useState([])
+  const [topRated, setTopRated] = useState([])
   const [search, setSearch] = useState('')
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState(null)
   const [selectedManga, setSelectedManga] = useState(null)
   const [detailLoading, setDetailLoading] = useState(false)
+  const [showAddForm, setShowAddForm] = useState(false)
 
   const openManga = async (m) => {
     // show modal immediately with basic data, then fetch full record from Supabase
@@ -133,29 +136,30 @@ export default function Catalog(){
     return () => { mounted = false }
   }, [])
 
-  // fetch user's favorite mangas
   const { user } = useAuth()
+
+  // fetch top-rated mangas (compute avg & votes from `rating` table)
   useEffect(()=>{
     let mounted = true
-    async function fetchFavorites(){
-      setFavorites([])
-      if (!user) return
+    async function fetchTopRated(){
       try{
-        const { data: favs, error: favErr } = await supabase
-          .from('User_Favorite')
-          .select('manga_id')
-          .eq('user_id', user.id)
-
-        if (favErr) { console.warn('fav list err', favErr); return }
-        const ids = (favs || []).map(f => f.manga_id).filter(Boolean)
-        if (ids.length === 0) { setFavorites([]); return }
-        const { data: mangasData, error: mangasErr } = await supabase
-          .from('Manga')
-          .select('id, title, cover, tags')
-          .in('id', ids)
-
-        if (mangasErr) { console.warn('fav manga fetch err', mangasErr); setFavorites([]); return }
-
+        const { data: ratings, error: ratingsErr } = await supabase.from('rating').select('manga_id, rating')
+        if (ratingsErr) { console.warn('ratings fetch err', ratingsErr); setTopRated([]); return }
+        const map = {}
+        ;(ratings || []).forEach(r => {
+          const id = r.manga_id
+          if (!id) return
+          if (!map[id]) map[id] = { sum: 0, count: 0 }
+          map[id].sum += Number(r.rating || 0)
+          map[id].count += 1
+        })
+        const arr = Object.entries(map).map(([manga_id, v]) => ({ manga_id, avg: v.sum / v.count, votes: v.count }))
+        arr.sort((a,b) => b.avg - a.avg || b.votes - a.votes)
+        const top = arr.slice(0, 12)
+        const ids = top.map(t => t.manga_id)
+        if (ids.length === 0) { if (mounted) setTopRated([]); return }
+        const { data: mangasData, error: mangasErr } = await supabase.from('Manga').select('id, title, cover, tags, update').in('id', ids)
+        if (mangasErr) { console.warn('top manga fetch err', mangasErr); if (mounted) setTopRated([]); return }
         const bucket = import.meta.env.VITE_SUPABASE_BUCKET || 'covers'
         const normalizeItem = (item) => {
           let imageUrl = null
@@ -170,14 +174,14 @@ export default function Catalog(){
           }
           return { ...item, imageUrl, tags: tagsArray }
         }
-
-        if (!mounted) return
-        setFavorites((mangasData || []).map(normalizeItem))
-      }catch(e){ console.warn('fetchFavorites', e); setFavorites([]) }
+        const byId = Object.fromEntries((mangasData||[]).map(normalizeItem).map(m=>[m.id,m]))
+        const result = top.map(t => ({ ...(byId[t.manga_id] || {}), avg: t.avg, votes: t.votes }))
+        if (mounted) setTopRated(result)
+      }catch(e){ console.warn('fetchTopRated', e); if (mounted) setTopRated([]) }
     }
-    fetchFavorites()
+    fetchTopRated()
     return ()=>{ mounted = false }
-  }, [user])
+  }, [mangas])
 
       // refs for each shelf container to control scrolling
       const shelfRefs = useRef({})
@@ -354,24 +358,19 @@ export default function Catalog(){
           })()}
         </div>
       </section>
-      {/* Favorites section for logged-in user */}
-      {user && (
-        <section style={{marginBottom:20}}>
-          <h3 style={{marginTop:6}}>รายการโปรดของฉัน</h3>
-          {favorites.length === 0 ? (
-            <div style={{color:'#666'}}>คุณยังไม่มีรายการโปรด</div>
-          ) : (
-            <div style={{display:'flex', gap:12, overflowX:'auto', paddingTop:8}}>
-              {favorites.map(f => (
-                <div key={f.id} style={{width:120, cursor:'pointer'}} onClick={() => openManga(f)}>
-                  {f.imageUrl ? <img src={f.imageUrl} alt={f.title} style={{width:'100%', height:180, objectFit:'cover', borderRadius:6}} /> : <div style={{width:'100%', height:180, background:'#eee', borderRadius:6}} />}
-                  <div style={{fontSize:13, marginTop:6, whiteSpace:'nowrap', overflow:'hidden', textOverflow:'ellipsis'}}>{f.title}</div>
-                </div>
-              ))}
+      {/* Top rated mangas */}
+      <section style={{marginBottom:20}}>
+        <h3 style={{marginTop:6}}>มังงะที่มีคะแนนมากที่สุด</h3>
+        <div style={{display:'flex', gap:12, overflowX:'auto', paddingTop:8}}>
+          {topRated.length === 0 ? <div style={{color:'#666'}}>ยังไม่มีการให้คะแนน</div> : topRated.map(m => (
+            <div key={m.id || m.manga_id} style={{width:120, cursor:'pointer'}} onClick={() => openManga(m)}>
+              {m.imageUrl ? <img src={m.imageUrl} alt={m.title} style={{width:'100%', height:180, objectFit:'cover', borderRadius:6}} /> : <div style={{width:'100%', height:180, background:'#eee', borderRadius:6}} />}
+              <div style={{fontSize:13, marginTop:6, whiteSpace:'nowrap', overflow:'hidden', textOverflow:'ellipsis'}}>{m.title}</div>
+              <div style={{fontSize:11, color:'#666'}}>{m.avg ? `Avg ${Number(m.avg).toFixed(1)}` : ''} {m.votes ? `(${m.votes})` : ''}</div>
             </div>
-          )}
-        </section>
-      )}
+          ))}
+        </div>
+      </section>
       {sortedTags.length === 0 && <div>No tags found.</div>}
       {sortedTags.map(tag => {
         const items = (shelves[tag].primary || [])
@@ -472,9 +471,13 @@ export default function Catalog(){
                   <div style={{display:'flex', justifyContent:'space-between', alignItems:'start'}}>
                   <div>
                     <h3 style={{margin:0}}>{selectedManga.title}</h3>
-                    <div style={{color:'#666', marginTop:6}}>{(selectedManga.tags||[]).join(', ') || 'Untagged'}</div>
+                    <div style={{display:'flex', alignItems:'center', gap:12, marginTop:6}}>
+                      <div style={{color:'#666'}}>{(selectedManga.tags||[]).join(', ') || 'Untagged'}</div>
+                      <div><RatingStars mangaId={selectedManga.id} /></div>
+                    </div>
                   </div>
                   <div style={{display:'flex', gap:8, alignItems:'center'}}>
+                    <button onClick={(e)=>{ e.stopPropagation(); if(!user) return alert('โปรดล็อกอินก่อน'); setShowAddForm(true) }} style={{padding:'6px 10px', borderRadius:8, background:'#eef2ff', border:'1px solid #c7d2fe', cursor:'pointer'}}>Add to My List</button>
                     <FavoriteButtonLarge mangaId={selectedManga.id} />
                     <button onClick={()=>setSelectedManga(null)} style={{border:'none', background:'transparent', fontSize:20, cursor:'pointer'}}>✕</button>
                   </div>
@@ -532,7 +535,7 @@ export default function Catalog(){
                       {/* show status + update next (status first, then update), then remaining fields like Random page */}
                       <div style={{marginTop:10}}>
                         {(() => {
-                          const excluded = new Set(['imageUrl','id','cover','tags','title','_loading','description','author','publisher','volume'])
+                          const excluded = new Set(['imageUrl','id','cover','tags','title','_loading','description','author','publisher','volume','avg','votes'])
                           const entries = Object.entries(selectedManga).filter(([k]) => !excluded.has(k))
                           // place status first, update second if present
                           const order = ['status','update']
@@ -567,6 +570,7 @@ export default function Catalog(){
           </div>
         </div>
       ) : null}
+      {showAddForm && selectedManga && <AddToListForm mangaId={selectedManga.id} onClose={()=>setShowAddForm(false)} onAdded={()=>{ setShowAddForm(false); }} />}
     </div>
   )
 }
