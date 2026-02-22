@@ -39,6 +39,7 @@ export default function Catalog(){
   const [mangas, setMangas] = useState([])
   const [topRated, setTopRated] = useState([])
   const [search, setSearch] = useState('')
+  const [tagFilter, setTagFilter] = useState('')
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState(null)
   const [selectedManga, setSelectedManga] = useState(null)
@@ -301,8 +302,15 @@ export default function Catalog(){
       // Build shelves grouped by tag: primary first, then secondary
       const shelves = {}
       const tagOrder = []
-      // use filtered list when searching
-      const sourceList = search ? mangas.filter(x => String(x.title || '').toLowerCase().includes(search.toLowerCase())) : mangas
+      // when searching or tag filtering, we'll render a single results shelf instead of the usual tag shelves
+      const isFiltering = Boolean(search && String(search).trim()) || Boolean(tagFilter)
+      const sourceList = isFiltering
+        ? mangas.filter(x => {
+          const titleMatch = search ? String(x.title || '').toLowerCase().includes(search.toLowerCase()) : true
+          const tagMatch = tagFilter ? (Array.isArray(x.tags) ? x.tags.includes(tagFilter) : String(x.tags || '').toLowerCase().includes(String(tagFilter).toLowerCase())) : true
+          return titleMatch && tagMatch
+        })
+        : mangas
       sourceList.forEach(m => {
         (m.tags || []).forEach(tag => {
           if (!shelves[tag]) {
@@ -333,44 +341,74 @@ export default function Catalog(){
         return a.localeCompare(b)
       })
 
+  // build a list of available tags for the filter dropdown
+  const availableTags = Array.from(new Set(mangas.flatMap(m => (m.tags || [])))).filter(Boolean).sort((a,b)=>a.localeCompare(b))
+
+  // determine which tags should be shown in the shelves area
+  const visibleTags = (() => {
+    if (isFiltering) {
+      if (tagFilter) return [tagFilter].filter(t => !!shelves[t])
+      // collect tags present in the filtered sourceList
+      return Array.from(new Set(sourceList.flatMap(m => (m.tags || [])))).filter(Boolean).sort((a,b)=>a.localeCompare(b))
+    }
+    return sortedTags
+  })()
+
   return (
     <div style={{padding:20}}>
       <h2>Bookshelves</h2>
       {/* Search bar */}
-      <div style={{marginBottom:12, display:'flex', alignItems:'center', gap:12}}>
-        <input value={search} onChange={e=>setSearch(e.target.value)} placeholder="ค้นหาชื่อมังงะ" style={{padding:10, borderRadius:8, border:'1px solid #e5e7eb', width:360}} />
-        <div style={{color:'#666'}}></div>
-      </div>
-      {/* Latest updates row */}
-      <section style={{marginBottom:20}}>
-        <h3 style={{marginTop:6}}>อัพเดตล่าสุด</h3>
-        <div style={{display:'flex', gap:12, overflowX:'auto', paddingTop:8}}>
-          {(() => {
-            const latest = mangas.slice().filter(m=>m.update).sort((a,b)=> new Date(b.update) - new Date(a.update)).slice(0,12)
-            if (latest.length === 0) return <div style={{color:'#666'}}>ยังไม่มีการอัพเดต</div>
-            return latest.map(m => (
-              <div key={m.id} style={{width:120, cursor:'pointer'}} onClick={() => openManga(m)}>
-                {m.imageUrl ? <img src={m.imageUrl} alt={m.title} style={{width:'100%', height:180, objectFit:'cover', borderRadius:6}} /> : <div style={{width:'100%', height:180, background:'#eee', borderRadius:6}} />}
-                <div style={{fontSize:13, marginTop:6, whiteSpace:'nowrap', overflow:'hidden', textOverflow:'ellipsis'}}>{m.title}</div>
-                <div style={{fontSize:11, color:'#666'}}>{new Date(m.update).toLocaleDateString()}</div>
-              </div>
-            ))
-          })()}
+        <div className="mb-3 flex items-center gap-3">
+          <input
+            value={search}
+            onChange={e=>setSearch(e.target.value)}
+            placeholder="ค้นหาชื่อมังงะ"
+            className="px-3 py-2 rounded-lg border border-gray-200 w-96"
+          />
+          <select value={tagFilter} onChange={e=>setTagFilter(e.target.value)} className="px-3 py-2 rounded-lg border border-gray-200">
+            <option value="">ทั้งหมด</option>
+            {availableTags.map(t => <option key={t} value={t}>{t}</option>)}
+          </select>
+          <div className="text-gray-500"></div>
         </div>
-      </section>
-      {/* Top rated mangas */}
-      <section style={{marginBottom:20}}>
-        <h3 style={{marginTop:6}}>มังงะที่มีคะแนนมากที่สุด</h3>
-        <div style={{display:'flex', gap:12, overflowX:'auto', paddingTop:8}}>
-          {topRated.length === 0 ? <div style={{color:'#666'}}>ยังไม่มีการให้คะแนน</div> : topRated.map(m => (
-            <div key={m.id || m.manga_id} style={{width:120, cursor:'pointer'}} onClick={() => openManga(m)}>
-              {m.imageUrl ? <img src={m.imageUrl} alt={m.title} style={{width:'100%', height:180, objectFit:'cover', borderRadius:6}} /> : <div style={{width:'100%', height:180, background:'#eee', borderRadius:6}} />}
-              <div style={{fontSize:13, marginTop:6, whiteSpace:'nowrap', overflow:'hidden', textOverflow:'ellipsis'}}>{m.title}</div>
-              <div style={{fontSize:11, color:'#666'}}>{m.avg ? `Avg ${Number(m.avg).toFixed(1)}` : ''} {m.votes ? `(${m.votes})` : ''}</div>
+      {/* When not filtering, show Latest and Top Rated. If filtering, hide them and only show matching tag shelves below. */}
+      { !isFiltering && (
+        <>
+          {/* Latest updates row */}
+          <section className="mb-5">
+            <h3 className="mt-1.5">อัพเดตล่าสุด</h3>
+            <div className="flex gap-3 overflow-x-auto pt-2">
+              {(() => {
+                  const latest = mangas.slice().filter(m=>m.update).sort((a,b)=> new Date(b.update) - new Date(a.update)).slice(0,12)
+                  if (latest.length === 0) return <div className="text-gray-500">ยังไม่มีการอัพเดต</div>
+                  // Render larger uniform cards for the latest row (fixed width and consistent image height)
+                  return latest.map(m => (
+                    <div key={m.id} className="cursor-pointer" onClick={() => openManga(m)} style={{flex: '0 0 160px', width:160}}>
+                      <div style={{width:'100%', height:240, overflow:'hidden', borderRadius:8, background:'#fff', display:'flex', alignItems:'center', justifyContent:'center'}}>
+                        {m.imageUrl ? <img src={m.imageUrl} alt={m.title} style={{width:'100%', height:'100%', objectFit:'cover', display:'block'}} /> : <div style={{width:'100%', height:'100%', background:'#f2f2f2'}} />}
+                      </div>
+                      <div className="text-sm mt-1.5 truncate" style={{height:32}}>{m.title}</div>
+                      <div className="text-xs text-gray-600">{new Date(m.update).toLocaleDateString()}</div>
+                    </div>
+                  ))
+              })()}
             </div>
-          ))}
-        </div>
-      </section>
+          </section>
+          {/* Top rated mangas */}
+          <section className="mb-5">
+            <h3 className="mt-1.5">มังงะที่มีคะแนนมากที่สุด</h3>
+            <div className="flex gap-3 overflow-x-auto pt-2">
+              {topRated.length === 0 ? <div className="text-gray-500">ยังไม่มีการให้คะแนน</div> : topRated.map(m => (
+                <div key={m.id || m.manga_id} className="w-32 cursor-pointer" onClick={() => openManga(m)}>
+                  {m.imageUrl ? <img src={m.imageUrl} alt={m.title} className="w-full h-44 object-cover rounded-md" /> : <div className="w-full h-44 bg-gray-200 rounded-md" />}
+                  <div className="text-sm mt-1.5 truncate">{m.title}</div>
+                  <div className="text-xs text-gray-600">{m.avg ? `Avg ${Number(m.avg).toFixed(1)}` : ''} {m.votes ? `(${m.votes})` : ''}</div>
+                </div>
+              ))}
+            </div>
+          </section>
+        </>
+      )}
       {sortedTags.length === 0 && <div>No tags found.</div>}
       {sortedTags.map(tag => {
         const items = (shelves[tag].primary || [])
@@ -405,18 +443,18 @@ export default function Catalog(){
 
             <div
               ref={el => (shelfRefs.current[tag] = el)}
-              className="shelf-container"
+              className="flex gap-3 overflow-x-auto pb-1 pl-11 pr-11 items-start"
             >
               {(items.slice(0, visibleCounts[tag] || DEFAULT_VISIBLE)).map(m => (
-                <div key={m.id} className="shelf-card" onClick={() => openManga(m)} style={{cursor:'pointer', position:'relative'}} role="button" tabIndex={0} aria-label={`Open ${m.title}`}>
+                <div key={m.id} onClick={() => openManga(m)} className="flex-0 flex-col min-w-[200px] border border-gray-200 p-2 rounded-md bg-white box-border cursor-pointer relative" role="button" tabIndex={0} aria-label={`Open ${m.title}`}>
                   {m.imageUrl ? (
-                    <div className="shelf-thumb">
-                      <img src={m.imageUrl} alt={m.title} className="shelf-img"/>
+                    <div className="w-full h-48 bg-white rounded-md overflow-hidden flex items-center justify-center">
+                      <img src={m.imageUrl} alt={m.title} className="block w-full h-full object-contain rounded"/>
                     </div>
                   ) : (
-                    <div style={{width:'100%', aspectRatio:'2/3', background:'#eee', display:'flex', alignItems:'center', justifyContent:'center', borderRadius:4}}>No cover</div>
+                    <div className="w-full aspect-[2/3] bg-gray-200 flex items-center justify-center rounded">No cover</div>
                   )}
-                  <div className="shelf-title">{m.title}</div>
+                  <div className="mt-2 font-semibold text-sm leading-tight truncate min-h-[2.4em]">{m.title}</div>
                   {/* Favorite button overlay */}
                   <FavoriteButtonSmall mangaId={m.id} onClick={(e)=>{ e.stopPropagation(); }} />
                 </div>

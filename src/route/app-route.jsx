@@ -12,6 +12,7 @@ import AuthError from "../pages/AuthError";
 import Logout from "../pages/Logout";
 import Status from "../pages/Status";
 import MyList from "../pages/MyList";
+import Quiz from "../pages/Quiz";
 import Protected from "../pages/Protected";
 import RequireAuth from "../components/RequireAuth";
 
@@ -32,6 +33,7 @@ export default function AppRoute() {
             <Route path="/logout" element={<Logout />} />
             <Route path="/status" element={<Status />} />
             <Route path="/my-list" element={<MyList />} />
+            <Route path="/quiz" element={<Quiz />} />
             <Route path="/protected" element={<RequireAuth><Protected /></RequireAuth>} />
         </Routes>
     );

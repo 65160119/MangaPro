@@ -11,6 +11,7 @@ function HeaderAuth(){
       <Link to="/">หนังสือ</Link>
       <Link to="/forum">ฟอรัม</Link>
       <Link to="/random">สุ่มมังงะ</Link>
+      <Link to="/quiz">Quiz</Link>
       <div style={{marginLeft:'auto'}}>
         {user ? (
           (() => {
