@@ -1,4 +1,5 @@
 import React, { useState } from 'react'
+import { Link } from 'react-router-dom'
 import supabase from '../lib/supabaseClient'
 
 export default function ForgotPassword(){
@@ -27,6 +28,9 @@ export default function ForgotPassword(){
         {status && <div>{status}</div>}
         <button type="submit" disabled={loading} style={{padding:'8px 12px', borderRadius:6}}>{loading ? 'Sending...' : 'Send reset link'}</button>
       </form>
+      <div style={{marginTop:12, fontSize:13}}>
+        จำรหัสได้แล้ว? <Link to="/login" style={{color:'#0b79ff'}}>กลับไปหน้า Login</Link>
+      </div>
     </div>
   )
 }

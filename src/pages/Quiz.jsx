@@ -1,60 +1,73 @@
 import React, { useEffect, useState } from 'react'
 import supabase from '../lib/supabaseClient'
-import RatingStars from '../components/RatingStars'
 import AddToListForm from '../components/AddToListForm'
 import { useAuth } from '../context/Auth'
+import OwlbookStyles from '../components/OwlbookStyles'
+import MangaDetail, { openQuizDetail } from '../components/MangaDetail'
 
-export default function Quiz(){
+// ── shuffle helper ──────────────────────────────────────────────
+function shuffle(arr) {
+  const a = arr.slice()
+  for (let i = a.length - 1; i > 0; i--) {
+    const j = Math.floor(Math.random() * (i + 1));
+    [a[i], a[j]] = [a[j], a[i]]
+  }
+  return a
+}
+
+const STEPS = [
+  { key: 'tags',       label: 'แนวเรื่องที่อยากอ่าน',     sub: 'เลือกได้สูงสุด 2 แท็ก' },
+  { key: 'finished',   label: 'อยากอ่านเรื่องที่จบแล้วไหม?', sub: null },
+  { key: 'publisher',  label: 'สำนักพิมพ์',                sub: 'ไม่บังคับ' },
+  { key: 'mood',       label: 'อยากได้อารมณ์แบบไหน?',     sub: null },
+  { key: 'mc_gender',  label: 'ตัวเอกเพศอะไร?',           sub: null },
+]
+
+export default function Quiz() {
   const [step, setStep] = useState(0)
   const [tagsOptions, setTagsOptions] = useState([])
   const [publishers, setPublishers] = useState([])
+  const [pubDropdownOpen, setPubDropdownOpen] = useState(false)
   const [answer, setAnswer] = useState({ tags: [], finished: null, publisher: null, mood: null, mc_gender: null })
   const [loading, setLoading] = useState(false)
   const [results, setResults] = useState([])
   const [relaxMsg, setRelaxMsg] = useState('')
-  const [debugInfo, setDebugInfo] = useState(null)
   const [selectedManga, setSelectedManga] = useState(null)
   const [detailLoading, setDetailLoading] = useState(false)
   const [showAddForm, setShowAddForm] = useState(false)
   const { user } = useAuth()
 
-  useEffect(()=>{
+  useEffect(() => {
     let mounted = true
-    async function loadOptions(){
-      try{
-        // fetch a bunch of rows to collect tags and publishers (select * to handle Thai/English column names)
+    async function loadOptions() {
+      try {
         const { data } = await supabase.from('Manga').select('*').limit(1000)
         if (!mounted) return
         const tagSet = new Set()
         const pubSet = new Set()
-        ;(data||[]).forEach(r => {
-          // handle both English and Thai column names
-          const pubVal = r.publisher || r['ผู้จัดพิมพ์'] || r.publisher_name || r.publisher_name
+        ;(data || []).forEach(r => {
+          const pubVal = r.publisher || r['ผู้จัดพิมพ์']
           if (pubVal) pubSet.add(String(pubVal).trim())
           if (r.tags) {
-            if (Array.isArray(r.tags)) r.tags.forEach(t=> t && tagSet.add(String(t).trim()))
-            else if (typeof r.tags === 'string') r.tags.split(',').map(s=>s.trim()).filter(Boolean).forEach(t=>tagSet.add(t))
+            if (Array.isArray(r.tags)) r.tags.forEach(t => t && tagSet.add(String(t).trim()))
+            else if (typeof r.tags === 'string') r.tags.split(',').map(s => s.trim()).filter(Boolean).forEach(t => tagSet.add(t))
           }
         })
-        setTagsOptions(Array.from(tagSet).sort((a,b)=>a.localeCompare(b)))
-        setPublishers(Array.from(pubSet).sort((a,b)=>a.localeCompare(b)))
-      }catch(e){ console.warn('quiz load options', e) }
+        setTagsOptions(Array.from(tagSet).sort((a, b) => a.localeCompare(b)))
+        setPublishers(Array.from(pubSet).sort((a, b) => a.localeCompare(b)))
+      } catch (e) { console.warn('quiz load options', e) }
     }
     loadOptions()
-    return ()=>{ mounted = false }
+    return () => { mounted = false }
   }, [])
 
   const onPick = (key, value) => {
     if (key === 'tags') {
       setAnswer(prev => {
-        const arr = Array.isArray(prev.tags) ? prev.tags.slice() : []
+        const arr = prev.tags.slice()
         const idx = arr.indexOf(value)
-        if (idx === -1) {
-          if (arr.length >= 2) return prev // max 2
-          arr.push(value)
-        } else {
-          arr.splice(idx,1)
-        }
+        if (idx === -1) { if (arr.length >= 2) return prev; arr.push(value) }
+        else arr.splice(idx, 1)
         return { ...prev, tags: arr }
       })
       return
@@ -62,349 +75,387 @@ export default function Quiz(){
     setAnswer(prev => ({ ...prev, [key]: value }))
   }
 
-  // helper to read fields that may be stored with English or Thai column names
   const getField = (obj, keys) => {
     for (const k of keys) {
-      if (!obj) continue
-      if (Object.prototype.hasOwnProperty.call(obj, k) && obj[k] != null) return obj[k]
+      if (obj && Object.prototype.hasOwnProperty.call(obj, k) && obj[k] != null) return obj[k]
     }
     return null
   }
 
-  // normalize/compare helpers
   const detectFinished = (stRaw) => {
     const st = String(stRaw || '').toLowerCase()
     if (!st) return null
-    // explicit negative like 'ยังไม่' (ยังไม่จบ) should be treated as not finished
     if (st.includes('ยังไม่') || st.includes('ongoing') || st.includes('not') || st.includes('on-going')) return false
-    // explicit finished indicators
     if (st.includes('จบแล้ว') || (st.includes('จบ') && !st.includes('ยังไม่')) || st.includes('finish') || st.includes('finished') || st.includes('completed')) return true
     return null
   }
 
   const isMoodMatch = (moodValRaw, wantRaw) => {
-    const moodVal = String(moodValRaw || '').toLowerCase()
-    const want = String(wantRaw || '').toLowerCase()
-    if (!want) return true
-    if (!moodVal) return false
-    if (moodVal.includes(want)) return true
-    if (want === 'light') return moodVal.includes('สบาย') || moodVal.includes('light') || moodVal.includes('เบา')
-    if (want === 'balance') return moodVal.includes('กลาง') || moodVal.includes('balance') || moodVal.includes('ปานกลาง')
-    if (want === 'dark') return moodVal.includes('ดาร์ก') || moodVal.includes('dark') || moodVal.includes('มืด')
-    return moodVal.includes(want)
+    const v = String(moodValRaw || '').toLowerCase(); const w = String(wantRaw || '').toLowerCase()
+    if (!w) return true; if (!v) return false
+    if (v.includes(w)) return true
+    if (w === 'light') return v.includes('สบาย') || v.includes('light') || v.includes('เบา')
+    if (w === 'balance') return v.includes('กลาง') || v.includes('balance') || v.includes('ปานกลาง')
+    if (w === 'dark') return v.includes('ดาร์ก') || v.includes('dark') || v.includes('มืด')
+    return v.includes(w)
   }
 
   const isMCMatch = (mcValRaw, wantGender) => {
-    const mcVal = String(mcValRaw || '').toLowerCase()
-    if (!wantGender) return true
-    if (!mcVal) return false
-    if (wantGender === 'male') return (mcVal.includes('male') || mcVal.includes('boy') || mcVal.includes('ชาย'))
-    if (wantGender === 'female') return (mcVal.includes('female') || mcVal.includes('girl') || mcVal.includes('หญิง'))
-    // 'both' mapping should accept 'both', 'couple', 'คู่', 'ทั้ง', and 'dual'
-    if (wantGender === 'both') return (mcVal.includes('couple') || mcVal.includes('both') || mcVal.includes('คู่') || mcVal.includes('ทั้ง') || mcVal.includes('dual'))
+    const v = String(mcValRaw || '').toLowerCase()
+    if (!wantGender) return true; if (!v) return false
+    if (wantGender === 'male') return v.includes('male') || v.includes('boy') || v.includes('ชาย')
+    if (wantGender === 'female') return v.includes('female') || v.includes('girl') || v.includes('หญิง')
+    if (wantGender === 'both') return v.includes('couple') || v.includes('both') || v.includes('คู่') || v.includes('ทั้ง') || v.includes('dual')
     return false
   }
 
   const runSearch = async () => {
     setLoading(true)
-    try{
-      // fetch candidates and filter client-side for robustness
-      // use select('*') to avoid 400 errors when table uses different column names
+    try {
       const { data: rows } = await supabase.from('Manga').select('*').limit(500)
       const bucket = import.meta.env.VITE_SUPABASE_BUCKET || 'covers'
-      const filtered = (rows || []).filter(item => {
-        // tags: require all selected tags
-        if (answer.tags && answer.tags.length > 0) {
-          const itemTags = Array.isArray(item.tags) ? item.tags.map(t=>String(t).toLowerCase()) : (typeof item.tags === 'string' ? item.tags.split(',').map(s=>s.trim().toLowerCase()) : [])
-          for (const t of answer.tags) {
-            if (!itemTags.includes(String(t).toLowerCase())) return false
-          }
-        }
-        // finished filter: use robust detector (handles 'ยังไม่จบ')
-        if (answer.finished) {
-          const isFinished = detectFinished(getField(item, ['status','สถานะ']))
-          if (answer.finished === 'finished' && isFinished !== true) return false
-          if (answer.finished === 'not_finished' && isFinished === true) return false
-        }
-        // publisher
-        if (answer.publisher) {
-          const pubVal = getField(item, ['publisher','ผู้จัดพิมพ์'])
-          if (!pubVal || String(pubVal).trim().toLowerCase() !== String(answer.publisher).trim().toLowerCase()) return false
-        }
-        // mood matching (allow light/balance/dark mapping and Thai keywords)
-        if (answer.mood) {
-          if (!isMoodMatch(getField(item, ['mood','mood']), answer.mood)) return false
-        }
-        // main character gender: try to match keywords
-        if (answer.mc_gender) {
-          if (!isMCMatch(getField(item, ['mc','mc']), answer.mc_gender)) return false
-        }
-        return true
-      })
-      const normalized = (filtered||[]).map(item => {
+
+      const normalize = (item) => {
         let imageUrl = null
         if (item.cover) {
           if (/^https?:\/\//i.test(item.cover)) imageUrl = item.cover
-          else { try { imageUrl = supabase.storage.from(bucket).getPublicUrl(item.cover)?.data?.publicUrl || null } catch(e){ imageUrl = null } }
+          else { try { imageUrl = supabase.storage.from(bucket).getPublicUrl(item.cover)?.data?.publicUrl || null } catch { imageUrl = null } }
         }
         return { ...item, imageUrl }
-      })
-      let final = (normalized || []).slice(0, 4)
-      let msg = ''
-      // set debug info initial
-      setDebugInfo({ totalRows: (rows||[]).length, filteredCount: (filtered||[]).length, normalizedCount: (normalized||[]).length })
-      // progressive relaxation if no exact matches
-      if ((!final || final.length === 0)) {
-        // 1) ignore publisher
-        const relaxed1 = (normalized || []).filter(item => {
-          // repeat filtering but without publisher
-          if (answer.tags && answer.tags.length > 0) {
-            const itemTags = Array.isArray(item.tags) ? item.tags.map(t=>String(t).toLowerCase()) : (typeof item.tags === 'string' ? item.tags.split(',').map(s=>s.trim().toLowerCase()) : [])
+      }
+
+      const applyFilter = (items, { useTags = true, usePublisher = true, useMood = true, useMC = true, useFinished = true } = {}) =>
+        items.filter(item => {
+          if (useTags && answer.tags.length > 0) {
+            const itemTags = Array.isArray(item.tags) ? item.tags.map(t => String(t).toLowerCase()) : (typeof item.tags === 'string' ? item.tags.split(',').map(s => s.trim().toLowerCase()) : [])
             for (const t of answer.tags) if (!itemTags.includes(String(t).toLowerCase())) return false
           }
-          if (answer.finished) {
-            const isFinished = detectFinished(getField(item, ['status','สถานะ']))
+          if (useFinished && answer.finished) {
+            const isFinished = detectFinished(getField(item, ['status', 'สถานะ']))
             if (answer.finished === 'finished' && isFinished !== true) return false
             if (answer.finished === 'not_finished' && isFinished === true) return false
           }
-          if (answer.mood) {
-            if (!isMoodMatch(getField(item, ['mood','mood']), answer.mood)) return false
+          if (usePublisher && answer.publisher) {
+            const pubVal = getField(item, ['publisher', 'ผู้จัดพิมพ์'])
+            if (!pubVal || String(pubVal).trim().toLowerCase() !== String(answer.publisher).trim().toLowerCase()) return false
           }
-          if (answer.mc_gender) {
-            if (!isMCMatch(getField(item, ['mc','mc']), answer.mc_gender)) return false
-          }
+          if (useMood && answer.mood && !isMoodMatch(getField(item, ['mood']), answer.mood)) return false
+          if (useMC && answer.mc_gender && !isMCMatch(getField(item, ['mc']), answer.mc_gender)) return false
           return true
         })
-        if (relaxed1 && relaxed1.length > 0) { final = relaxed1.slice(0,4); msg = 'No exact matches — ignored publisher filter' }
+
+      const normalized = (rows || []).map(normalize)
+
+      // progressive relaxation — shuffle ก่อน slice เสมอ
+      let final = [], msg = ''
+      const tries = [
+        { opts: {},                                          label: '' },
+        { opts: { usePublisher: false },                    label: 'ไม่พบตรงสำนักพิมพ์ที่เลือก' },
+        { opts: { usePublisher: false, useTags: false },    label: 'ไม่พบตรงแนวเรื่อง' },
+        { opts: { usePublisher: false, useTags: false, useMood: false, useMC: false }, label: 'ผลที่ใกล้เคียงที่สุด' },
+      ]
+      for (const { opts, label } of tries) {
+        const filtered = applyFilter(normalized, opts)
+        if (filtered.length > 0) {
+          final = shuffle(filtered).slice(0, 4)  // ← shuffle ตรงนี้
+          msg = label
+          break
+        }
       }
-      if ((!final || final.length === 0)) {
-        // 2) ignore tags as well
-        const relaxed2 = (normalized || []).filter(item => {
-          if (answer.finished) {
-            const isFinished = detectFinished(getField(item, ['status','สถานะ']))
-            if (answer.finished === 'finished' && isFinished !== true) return false
-            if (answer.finished === 'not_finished' && isFinished === true) return false
-          }
-          if (answer.mood) {
-            if (!isMoodMatch(getField(item, ['mood','mood']), answer.mood)) return false
-          }
-          if (answer.mc_gender) {
-            if (!isMCMatch(getField(item, ['mc','mc']), answer.mc_gender)) return false
-          }
-          return true
-        })
-        if (relaxed2 && relaxed2.length > 0) { final = relaxed2.slice(0,4); msg = msg ? msg + '; also ignored tags' : 'No matches — ignored tags' }
+      if (final.length === 0) {
+        final = shuffle(normalized).slice(0, 4)
+        msg = 'ไม่พบผลที่ตรง แสดงแบบสุ่ม'
       }
-      if ((!final || final.length === 0)) {
-        // 3) last resort: return any 4 items
-        final = (normalized || []).slice(0,4)
-        if (final.length > 0) msg = msg ? msg + '; returning popular items' : 'No matches — returning top items'
-      }
+
       setRelaxMsg(msg)
       setResults(final)
-      // update debug info with final count and relax message
-      setDebugInfo(prev => ({ ...(prev||{}), finalCount: (final||[]).length, relaxMsg: msg }))
       setStep(5)
-    }catch(e){ console.warn('quiz search', e) }
-    finally{ setLoading(false) }
+    } catch (e) { console.warn('quiz search', e) }
+    finally { setLoading(false) }
   }
 
-  const reset = () => { setStep(0); setAnswer({ tags: [], finished: null, publisher: null, mood: null, mc_gender: null }); setResults([]); setSelectedManga(null) }
+  const reset = () => {
+    setStep(0)
+    setAnswer({ tags: [], finished: null, publisher: null, mood: null, mc_gender: null })
+    setResults([])
+    setSelectedManga(null)
+    setRelaxMsg('')
+  }
 
   const openManga = async (m) => {
-    setSelectedManga({ ...m, _loading: true })
-    setDetailLoading(true)
-    try {
-      const { data, error } = await supabase.from('Manga').select('*').eq('id', m.id).single()
-      if (!error && data) {
-        const bucket = import.meta.env.VITE_SUPABASE_BUCKET || 'covers'
-        let imageUrl = m.imageUrl || null
-        if (!imageUrl && data.cover) {
-          if (/^https?:\/\//i.test(data.cover)) imageUrl = data.cover
-          else { try { imageUrl = supabase.storage.from(bucket).getPublicUrl(data.cover)?.data?.publicUrl || null } catch(e) { imageUrl = null } }
-        }
-        let tagsArray = []
-        if (data.tags) {
-          if (Array.isArray(data.tags)) tagsArray = data.tags.map(t => String(t).trim()).filter(Boolean)
-          else if (typeof data.tags === 'string') tagsArray = data.tags.split(',').map(s => s.trim()).filter(Boolean)
-        }
-        setSelectedManga({ ...m, ...data, imageUrl, tags: tagsArray, publisher: getField(data, ['publisher','ผู้จัดพิมพ์']), author: getField(data, ['author','ผู้แต่ง']), status: getField(data, ['status','สถานะ']), _loading: false })
-      } else {
-        setSelectedManga({ ...m, _loading: false })
-      }
-    } catch (e) {
-      console.error('fetch detail', e)
-      setSelectedManga({ ...m, _loading: false })
-    } finally {
-      setDetailLoading(false)
-    }
+    await openQuizDetail({ m, setSelectedManga, setDetailLoading })
   }
 
+  // ── shared option button ──────────────────────────────────────
+  const OptionBtn = ({ active, onClick, children }) => (
+    <button onClick={onClick} className={`quiz-opt-btn${active ? ' active' : ''}`}>{children}</button>
+  )
+
+  const progress = Math.round((Math.min(step, 5) / 5) * 100)
+
   return (
-    <div className="p-6">
-      <h2 className="text-2xl mb-4">Quiz: หาแนะนำสำหรับคุณ</h2>
+    <div className="owl-catalog">
+      <OwlbookStyles />
+      <style>{`
+        .owl-quiz-wrap {
+          max-width: 640px; margin: 0 auto; padding: 40px 0;
+          display: flex; flex-direction: column; gap: 0;
+        }
 
-      {step === 0 && (
-        <div>
-          <p className="mb-3">คำถาม 1: แนวเรื่องที่คุณอยากอ่าน (เลือกได้สูงสุด 2 แท็ก)</p>
-          <div className="flex flex-wrap gap-2 mb-4">
-            {tagsOptions.length === 0 ? <div className="text-gray-500">กำลังโหลดตัวเลือก...</div> : tagsOptions.map(t => (
-              <button key={t} onClick={()=>onPick('tags', t)} className={`px-3 py-1 rounded ${answer.tags.includes(t)? 'bg-blue-600 text-white':'bg-gray-100'}`}>{t}</button>
-            ))}
-          </div>
-          <div className="flex gap-2">
-            <button className="px-4 py-2 rounded bg-blue-600 text-white" onClick={()=>setStep(1)} disabled={answer.tags.length===0}>ถัดไป</button>
-            <button className="px-4 py-2 rounded border" onClick={()=>setStep(1)}>ข้าม</button>
-          </div>
+        /* ── Header ── */
+        .owl-quiz-heading {
+          font-family: 'DM Serif Display', serif; font-size: 2rem;
+          color: var(--owl-purple-700); margin: 0 0 6px;
+        }
+        .owl-quiz-sub { font-size: 13.5px; color: var(--owl-text-faint); margin-bottom: 28px; }
+
+        /* ── Progress bar ── */
+        .owl-quiz-progress-track {
+          height: 4px; background: var(--owl-surface-2); border-radius: 4px; margin-bottom: 32px; overflow: hidden;
+        }
+        .owl-quiz-progress-fill {
+          height: 100%; border-radius: 4px;
+          background: linear-gradient(to right, var(--owl-accent), var(--owl-purple-400));
+          transition: width 0.4s ease;
+        }
+
+        /* ── Step card ── */
+        .owl-quiz-card {
+          background: var(--owl-surface); border: 1.5px solid var(--owl-border);
+          border-radius: 16px; padding: 28px;
+          animation: owl-fadein 0.2s ease;
+        }
+        @keyframes owl-fadein { from { opacity:0; transform:translateY(8px) } to { opacity:1; transform:none } }
+
+        .owl-quiz-q { font-size: 1.1rem; font-weight: 600; color: var(--owl-purple-600); margin: 0 0 4px; }
+        .owl-quiz-hint { font-size: 12.5px; color: var(--owl-text-faint); margin: 0 0 18px; }
+
+        /* ── Option buttons ── */
+        .owl-quiz-opts { display: flex; flex-wrap: wrap; gap: 8px; margin-bottom: 24px; }
+        .quiz-opt-btn {
+          padding: 8px 16px; border-radius: 20px; font-size: 13.5px; font-weight: 500;
+          border: 1.5px solid var(--owl-border); background: var(--owl-surface-2);
+          color: var(--owl-text-sub); cursor: pointer; font-family: 'DM Sans', sans-serif;
+          transition: all 0.15s;
+        }
+        .quiz-opt-btn:hover { border-color: var(--owl-accent); color: var(--owl-text); }
+        .quiz-opt-btn.active { border-color: var(--owl-accent); background: var(--owl-purple-100); color: var(--owl-accent); font-weight: 600; }
+
+        /* ── Nav buttons ── */
+        .owl-quiz-nav { display: flex; gap: 8px; }
+        .owl-quiz-btn-next {
+          padding: 9px 24px; border-radius: 10px; font-size: 13.5px; font-weight: 600;
+          border: none; background: var(--owl-accent); color: var(--owl-bg);
+          cursor: pointer; font-family: 'DM Sans', sans-serif; transition: opacity 0.15s;
+        }
+        .owl-quiz-btn-next:hover:not(:disabled) { opacity: 0.88; }
+        .owl-quiz-btn-next:disabled { opacity: 0.35; cursor: not-allowed; }
+        .owl-quiz-btn-back {
+          padding: 9px 18px; border-radius: 10px; font-size: 13.5px; font-weight: 500;
+          border: 1.5px solid var(--owl-border); background: transparent;
+          color: var(--owl-text-faint); cursor: pointer; font-family: 'DM Sans', sans-serif;
+          transition: all 0.15s;
+        }
+        .owl-quiz-btn-back:hover { border-color: var(--owl-text-faint); color: var(--owl-text-sub); }
+        .owl-quiz-btn-skip {
+          padding: 9px 14px; border-radius: 10px; font-size: 13px;
+          border: none; background: transparent; color: var(--owl-text-faint);
+          cursor: pointer; font-family: 'DM Sans', sans-serif; transition: color 0.15s;
+        }
+        .owl-quiz-btn-skip:hover { color: var(--owl-text-sub); }
+
+        /* ── Results ── */
+        .owl-quiz-results-grid {
+          display: grid; grid-template-columns: repeat(2, 1fr); gap: 14px; margin-bottom: 24px;
+        }
+        .owl-quiz-result-card {
+          background: var(--owl-surface); border: 1.5px solid var(--owl-border);
+          border-radius: 12px; overflow: hidden; cursor: pointer;
+          transition: transform 0.2s, border-color 0.2s, box-shadow 0.2s;
+        }
+        .owl-quiz-result-card:hover { transform: translateY(-4px); border-color: var(--owl-accent); box-shadow: 0 8px 28px rgba(0,0,0,0.5); }
+        .owl-quiz-result-img { width: 100%; height: 220px; object-fit: cover; display: block; background: var(--owl-surface-2); }
+        .owl-quiz-result-body { padding: 10px 12px; }
+        .owl-quiz-result-title { font-size: 13px; font-weight: 600; color: var(--owl-text); margin-bottom: 4px; display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; }
+        .owl-quiz-result-meta { font-size: 11.5px; color: var(--owl-text-faint); }
+
+        /* ── Relax message ── */
+        .owl-quiz-relax {
+          padding: 8px 14px; border-radius: 8px; font-size: 12.5px;
+          background: rgba(192,132,252,0.1); border: 1px solid var(--owl-border);
+          color: var(--owl-text-sub); margin-bottom: 16px;
+        }
+
+        /* ── Loading ── */
+        .owl-quiz-loading { display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 14px; padding: 60px 0; }
+      `}</style>
+
+      <div className="owl-quiz-wrap">
+        <h2 className="owl-quiz-heading">Quiz</h2>
+        <p className="owl-quiz-sub">ตอบคำถามให้เราช่วยหามังงะที่เหมาะกับคุณ 🦉</p>
+
+        {/* Progress bar */}
+        <div className="owl-quiz-progress-track">
+          <div className="owl-quiz-progress-fill" style={{ width: `${progress}%` }} />
         </div>
-      )}
 
-      {step === 1 && (
-        <div>
-          <p className="mb-3">คำถาม 2: อยากอ่านเรื่องที่จบแล้วหรือไม่?</p>
-          <div className="flex gap-2 mb-4">
-            <button onClick={()=>onPick('finished','finished')} className={`px-4 py-2 rounded ${answer.finished==='finished'? 'bg-blue-600 text-white':'bg-gray-100'}`}>จบแล้ว</button>
-            <button onClick={()=>onPick('finished','not_finished')} className={`px-4 py-2 rounded ${answer.finished==='not_finished'? 'bg-blue-600 text-white':'bg-gray-100'}`}>ยังไม่จบ</button>
-            <button onClick={()=>onPick('finished', null)} className={`px-4 py-2 rounded ${answer.finished===null? 'bg-blue-600 text-white':'bg-gray-100'}`}>ไม่ระบุ</button>
+        {/* ── Step 0: Tags ── */}
+        {step === 0 && (
+          <div className="owl-quiz-card">
+            <div className="owl-quiz-q">{STEPS[0].label}</div>
+            <div className="owl-quiz-hint">{STEPS[0].sub}</div>
+            <div className="owl-quiz-opts">
+              {tagsOptions.length === 0
+                ? <div className="owl-loader-wrap"><img src="/Owl-Book.png" className="owl-loader-img" alt="" /><div className="owl-loader-text">กำลังโหลด…</div></div>
+                : tagsOptions.map(t => <OptionBtn key={t} active={answer.tags.includes(t)} onClick={() => onPick('tags', t)}>{t}</OptionBtn>)
+              }
+            </div>
+            <div className="owl-quiz-nav">
+              <button className="owl-quiz-btn-next" onClick={() => setStep(1)} disabled={answer.tags.length === 0}>ถัดไป →</button>
+              <button className="owl-quiz-btn-skip" onClick={() => setStep(1)}>ข้าม</button>
+            </div>
           </div>
-          <div className="flex gap-2">
-            <button className="px-4 py-2 rounded bg-blue-600 text-white" onClick={()=>setStep(2)}>ถัดไป</button>
-            <button className="px-4 py-2 rounded border" onClick={()=>setStep(0)}>กลับ</button>
-          </div>
-        </div>
-      )}
+        )}
 
-      {step === 2 && (
-        <div>
-          <p className="mb-3">คำถาม 3: สำนักพิมพ์ที่อยากซื้อ (เลือกได้หนึ่งแห่ง)</p>
-          <div className="mb-4">
-            <select id="publisher-select" name="publisher" aria-label="สำนักพิมพ์" value={answer.publisher || ''} onChange={e=>onPick('publisher', e.target.value || null)} className="px-3 py-2 rounded border">
-              <option value="">ไม่ระบุ</option>
-              {publishers.map(p => <option key={p} value={p}>{p}</option>)}
-            </select>
+        {/* ── Step 1: Finished ── */}
+        {step === 1 && (
+          <div className="owl-quiz-card">
+            <div className="owl-quiz-q">{STEPS[1].label}</div>
+            <div className="owl-quiz-hint" />
+            <div className="owl-quiz-opts">
+              <OptionBtn active={answer.finished === 'finished'} onClick={() => onPick('finished', 'finished')}>จบแล้ว ✓</OptionBtn>
+              <OptionBtn active={answer.finished === 'not_finished'} onClick={() => onPick('finished', 'not_finished')}>ยังไม่จบ</OptionBtn>
+              <OptionBtn active={answer.finished === null} onClick={() => onPick('finished', null)}>ไม่ระบุ</OptionBtn>
+            </div>
+            <div className="owl-quiz-nav">
+              <button className="owl-quiz-btn-next" onClick={() => setStep(2)}>ถัดไป →</button>
+              <button className="owl-quiz-btn-back" onClick={() => setStep(0)}>← กลับ</button>
+            </div>
           </div>
-          <div className="flex gap-2">
-            <button className="px-4 py-2 rounded bg-blue-600 text-white" onClick={()=>setStep(3)}>ถัดไป</button>
-            <button className="px-4 py-2 rounded border" onClick={()=>setStep(1)}>กลับ</button>
-          </div>
-        </div>
-      )}
+        )}
 
-      {step === 3 && (
-        <div>
-          <p className="mb-3">คำถาม 4: อยากได้อารมณ์แบบไหน?</p>
-          <div className="flex gap-2 mb-4">
-            <button onClick={()=>onPick('mood','light')} className={`px-4 py-2 rounded ${answer.mood==='light'? 'bg-blue-600 text-white':'bg-gray-100'}`}>สบายๆ</button>
-            <button onClick={()=>onPick('mood','balance')} className={`px-4 py-2 rounded ${answer.mood==='balance'? 'bg-blue-600 text-white':'bg-gray-100'}`}>กลางๆ</button>
-            <button onClick={()=>onPick('mood','dark')} className={`px-4 py-2 rounded ${answer.mood==='dark'? 'bg-blue-600 text-white':'bg-gray-100'}`}>ดาร์ก</button>
-            <button onClick={()=>onPick('mood', null)} className={`px-4 py-2 rounded ${answer.mood===null? 'bg-blue-600 text-white':'bg-gray-100'}`}>ไม่ระบุ</button>
-          </div>
-          <div className="flex gap-2">
-            <button className="px-4 py-2 rounded bg-blue-600 text-white" onClick={()=>setStep(4)}>ถัดไป</button>
-            <button className="px-4 py-2 rounded border" onClick={()=>setStep(2)}>กลับ</button>
-          </div>
-        </div>
-      )}
-
-      {step === 4 && (
-        <div>
-          <p className="mb-3">คำถาม 5: ตัวเอกเพศอะไร?</p>
-          <div className="flex gap-2 mb-4">
-            <button onClick={()=>onPick('mc_gender','male')} className={`px-4 py-2 rounded ${answer.mc_gender==='male'? 'bg-blue-600 text-white':'bg-gray-100'}`}>ชาย</button>
-            <button onClick={()=>onPick('mc_gender','female')} className={`px-4 py-2 rounded ${answer.mc_gender==='female'? 'bg-blue-600 text-white':'bg-gray-100'}`}>หญิง</button>
-            <button onClick={()=>onPick('mc_gender','both')} className={`px-4 py-2 rounded ${answer.mc_gender==='both'? 'bg-blue-600 text-white':'bg-gray-100'}`}>ทั้งคู่</button>
-            <button onClick={()=>onPick('mc_gender', null)} className={`px-4 py-2 rounded ${answer.mc_gender===null? 'bg-blue-600 text-white':'bg-gray-100'}`}>ไม่ระบุ</button>
-          </div>
-          <div className="flex gap-2">
-            <button className="px-4 py-2 rounded bg-blue-600 text-white" onClick={()=>runSearch()} >ดูผลลัพธ์</button>
-            <button className="px-4 py-2 rounded border" onClick={()=>setStep(3)}>กลับ</button>
-          </div>
-        </div>
-      )}
-
-      {step === 5 && (
-        <div>
-          <h3 className="text-xl mb-2">ผลลัพธ์ที่ตรงกับคำตอบของคุณ</h3>
-          {relaxMsg ? <div className="text-sm text-yellow-700 mb-2">{relaxMsg}</div> : null}
-          {debugInfo ? (
-            <div className="text-xs text-gray-500 mb-2">แถวทั้งหมด: {debugInfo.totalRows} — หลังกรอง: {debugInfo.filteredCount} — มีรูป: {debugInfo.normalizedCount} — แสดง: {debugInfo.finalCount || 0}</div>
-          ) : null}
-          {loading ? <div>Loading...</div> : (
-            <>
-              {results.length === 0 ? (
-                <div className="text-gray-500 mb-3">ไม่พบผลลัพธ์ ลองเปลี่ยนคำตอบ</div>
-              ) : (
-                <div className="grid grid-cols-2 md:grid-cols-2 lg:grid-cols-4 gap-4 mb-4">
-                  {results.map(m => (
-                    <div key={m.id} onClick={() => openManga(m)} className="border rounded p-2 flex flex-col items-start cursor-pointer">
-                      {m.imageUrl ? <img src={m.imageUrl} alt={m.title} className="w-40 h-60 object-cover rounded" /> : <div className="w-40 h-60 bg-gray-200 rounded" />}
-                      <div className="font-semibold mt-2">{m.title}</div>
-                      <div className="text-xs text-gray-600">{m.mood || ''} · {m.mc || ''}</div>
-                    </div>
-                  ))}
-                </div>
-              )}
-              <div className="flex gap-2 justify-center">
-                <button className="px-4 py-2 rounded border" onClick={reset}>เริ่มใหม่</button>
-              </div>
-            </>
-          )}
-
-          {/* detail modal - reused behaviour similar to Catalog */}
-          {selectedManga ? (
-            <div onClick={()=>setSelectedManga(null)} style={{position:'fixed', inset:0, background:'rgba(0,0,0,0.5)', display:'flex', alignItems:'center', justifyContent:'center', zIndex:60}}>
-              <div onClick={e=>e.stopPropagation()} style={{width:680, maxWidth:'95%', background:'#fff', borderRadius:8, padding:18, boxShadow:'0 10px 40px rgba(0,0,0,0.4)'}}>
-                <div style={{display:'flex', gap:16}}>
-                  <div style={{width:220, flex:'0 0 auto'}}>
-                    {selectedManga.imageUrl ? <img src={selectedManga.imageUrl} alt={selectedManga.title} style={{width:'100%', height:320, objectFit:'contain', borderRadius:6}} /> : <div style={{width:'100%', height:320, background:'#f2f2f2', borderRadius:6}} />}
-                  </div>
-                  <div style={{flex:1}}>
-                    <div style={{display:'flex', justifyContent:'space-between', alignItems:'start'}}>
-                      <div>
-                        <h3 style={{margin:0}}>{selectedManga.title}</h3>
-                        <div style={{display:'flex', alignItems:'center', gap:12, marginTop:6}}>
-                          <div style={{color:'#666'}}>{(selectedManga.tags||[]).join(', ') || 'Untagged'}</div>
-                          <div><RatingStars mangaId={selectedManga.id} /></div>
+        {/* ── Step 2: Publisher ── */}
+        {step === 2 && (
+          <div className="owl-quiz-card">
+            <div className="owl-quiz-q">{STEPS[2].label}</div>
+            <div className="owl-quiz-hint">{STEPS[2].sub}</div>
+            <div className="owl-quiz-opts" style={{ marginBottom: 24 }}>
+              <div className="owl-dropdown">
+                <button className={`owl-dropdown-btn${pubDropdownOpen ? ' open' : ''}`} onClick={() => setPubDropdownOpen(o => !o)}>
+                  {answer.publisher || 'ไม่ระบุ'}
+                </button>
+                {pubDropdownOpen && (
+                  <>
+                    <div style={{ position: 'fixed', inset: 0, zIndex: 199 }} onClick={() => setPubDropdownOpen(false)} />
+                    <div className="owl-dropdown-menu">
+                      {['', ...publishers].map(p => (
+                        <div key={p || '__none__'} className={`owl-dropdown-item${answer.publisher === (p || null) ? ' selected' : ''}`}
+                          onClick={() => { onPick('publisher', p || null); setPubDropdownOpen(false) }}>
+                          {p || 'ไม่ระบุ'}
                         </div>
-                      </div>
-                      <div style={{display:'flex', gap:8, alignItems:'center'}}>
-                        <button onClick={(e)=>{ e.stopPropagation(); if(!user) return alert('โปรดล็อกอินก่อน'); setShowAddForm(true) }} style={{padding:'6px 10px', borderRadius:8, background:'#eef2ff', border:'1px solid #c7d2fe', cursor:'pointer'}}>Add to My List</button>
-                        <button onClick={()=>setSelectedManga(null)} style={{border:'none', background:'transparent', fontSize:20, cursor:'pointer'}}>✕</button>
-                      </div>
+                      ))}
                     </div>
-                    <div style={{marginTop:12, color:'#333'}}>
-                      {selectedManga._loading ? (
-                        <div>กำลังโหลดข้อมูล...</div>
-                      ) : (
-                        <div>
-                          <div style={{marginBottom:8}}>
-                            <div style={{marginTop:6, fontSize:14, lineHeight:1.45}}>{selectedManga.description || 'ไม่มีข้อมูลคำอธิบาย'}</div>
-                          </div>
-                          <div style={{marginTop:8}}>
-                            {selectedManga.author && (
-                              <div style={{marginBottom:6}}><strong>Author:</strong> <span style={{color:'#333'}}>{selectedManga.author}</span></div>
-                            )}
-                            {selectedManga.publisher && (
-                              <div style={{marginBottom:6}}><strong>Publisher:</strong> <span style={{color:'#333'}}>{selectedManga.publisher}</span></div>
-                            )}
-                            {selectedManga.volume && (
-                              <div style={{marginBottom:6}}><strong>Volume:</strong> <span style={{color:'#333'}}>{selectedManga.volume}</span></div>
-                            )}
-                          </div>
-                        </div>
-                      )}
-                    </div>
-                  </div>
-                </div>
+                  </>
+                )}
               </div>
             </div>
-          ) : null}
+            <div className="owl-quiz-nav">
+              <button className="owl-quiz-btn-next" onClick={() => setStep(3)}>ถัดไป →</button>
+              <button className="owl-quiz-btn-back" onClick={() => setStep(1)}>← กลับ</button>
+            </div>
+          </div>
+        )}
 
-          {showAddForm && selectedManga && <AddToListForm mangaId={selectedManga.id} onClose={()=>setShowAddForm(false)} onAdded={()=>{ setShowAddForm(false); }} />}
+        {/* ── Step 3: Mood ── */}
+        {step === 3 && (
+          <div className="owl-quiz-card">
+            <div className="owl-quiz-q">{STEPS[3].label}</div>
+            <div className="owl-quiz-hint" />
+            <div className="owl-quiz-opts">
+              <OptionBtn active={answer.mood === 'light'} onClick={() => onPick('mood', 'light')}>☀️ สบายๆ</OptionBtn>
+              <OptionBtn active={answer.mood === 'balance'} onClick={() => onPick('mood', 'balance')}>⚖️ กลางๆ</OptionBtn>
+              <OptionBtn active={answer.mood === 'dark'} onClick={() => onPick('mood', 'dark')}>🌑 ดาร์ก</OptionBtn>
+              <OptionBtn active={answer.mood === null} onClick={() => onPick('mood', null)}>ไม่ระบุ</OptionBtn>
+            </div>
+            <div className="owl-quiz-nav">
+              <button className="owl-quiz-btn-next" onClick={() => setStep(4)}>ถัดไป →</button>
+              <button className="owl-quiz-btn-back" onClick={() => setStep(2)}>← กลับ</button>
+            </div>
+          </div>
+        )}
 
-        </div>
+        {/* ── Step 4: MC Gender ── */}
+        {step === 4 && (
+          <div className="owl-quiz-card">
+            <div className="owl-quiz-q">{STEPS[4].label}</div>
+            <div className="owl-quiz-hint" />
+            <div className="owl-quiz-opts">
+              <OptionBtn active={answer.mc_gender === 'male'} onClick={() => onPick('mc_gender', 'male')}>♂ ชาย</OptionBtn>
+              <OptionBtn active={answer.mc_gender === 'female'} onClick={() => onPick('mc_gender', 'female')}>♀ หญิง</OptionBtn>
+              <OptionBtn active={answer.mc_gender === 'both'} onClick={() => onPick('mc_gender', 'both')}>♂♀ ทั้งคู่</OptionBtn>
+              <OptionBtn active={answer.mc_gender === null} onClick={() => onPick('mc_gender', null)}>ไม่ระบุ</OptionBtn>
+            </div>
+            <div className="owl-quiz-nav">
+              <button className="owl-quiz-btn-next" onClick={runSearch}>ดูผลลัพธ์ ✨</button>
+              <button className="owl-quiz-btn-back" onClick={() => setStep(3)}>← กลับ</button>
+            </div>
+          </div>
+        )}
+
+        {/* ── Step 5: Results ── */}
+        {step === 5 && (
+          <div className="owl-quiz-card">
+            <div className="owl-quiz-q" style={{ marginBottom: 4 }}>ผลลัพธ์สำหรับคุณ ✨</div>
+
+            {loading ? (
+              <div className="owl-quiz-loading">
+                <img src="/Owl-Book.png" className="owl-loader-img-lg" alt="" />
+                <div className="owl-loader-text">กำลังค้นหามังงะที่เหมาะกับคุณ…</div>
+              </div>
+            ) : (
+              <>
+                {relaxMsg && <div className="owl-quiz-relax">💡 {relaxMsg}</div>}
+                {results.length === 0 ? (
+                  <div style={{ color: 'var(--owl-text-faint)', fontSize: 14, padding: '24px 0' }}>ไม่พบผลลัพธ์ ลองเปลี่ยนคำตอบดูนะ</div>
+                ) : (
+                  <div className="owl-quiz-results-grid">
+                    {results.map(m => (
+                      <div key={m.id} className="owl-quiz-result-card" onClick={() => openManga(m)}>
+                        {m.imageUrl
+                          ? <img src={m.imageUrl} alt={m.title} className="owl-quiz-result-img" />
+                          : <div className="owl-quiz-result-img" />
+                        }
+                        <div className="owl-quiz-result-body">
+                          <div className="owl-quiz-result-title">{m.title}</div>
+                          <div className="owl-quiz-result-meta">{[m.mood, m.mc].filter(Boolean).join(' · ')}</div>
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                )}
+                <div style={{ display: 'flex', gap: 8 }}>
+                  <button className="owl-quiz-btn-next" onClick={runSearch}>🔀 สุ่มมังงะที่เกี่ยวข้อง</button>
+                  <button className="owl-quiz-btn-back" onClick={reset}>เริ่มใหม่ทั้งหมด</button>
+                </div>
+              </>
+            )}
+          </div>
+        )}
+      </div>
+
+      {selectedManga && (
+        <MangaDetail
+          manga={selectedManga}
+          user={user}
+          onClose={() => setSelectedManga(null)}
+          onRequestAddToList={() => setShowAddForm(true)}
+          showFavoriteButton={false}
+          showProgressTab={false}
+        />
       )}
-
+      {showAddForm && selectedManga && (
+        <AddToListForm mangaId={selectedManga.id} onClose={() => setShowAddForm(false)} onAdded={() => setShowAddForm(false)} />
+      )}
     </div>
   )
 }

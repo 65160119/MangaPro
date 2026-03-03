@@ -1,5 +1,5 @@
 import React, { useState } from 'react'
-import { useNavigate } from 'react-router-dom'
+import { useNavigate, Link } from 'react-router-dom'
 import { useAuth } from '../context/Auth'
 
 export default function Signup(){
@@ -18,8 +18,9 @@ export default function Signup(){
     try{
       const { data, error } = await signUp({ email, password })
       if (error) { setError(error.message); setLoading(false); return }
-      // sign-up successful: redirect to home (email confirmation may be required)
-      navigate('/')
+      // sign-up successful: ask user to confirm email, then go to login
+      alert('เราได้ส่งอีเมลยืนยันไปให้แล้ว โปรดกดยืนยันอีเมลก่อน จากนั้นกลับมา Login อีกครั้ง')
+      navigate('/login')
     }catch(e){ setError(String(e)) }
     finally{ setLoading(false) }
   }
@@ -33,6 +34,9 @@ export default function Signup(){
         {error && <div style={{color:'red'}}>{error}</div>}
         <button type="submit" disabled={loading} style={{padding:'8px 12px', borderRadius:6}}>{loading ? 'Signing up...' : 'Sign up'}</button>
       </form>
+      <div style={{marginTop:12, fontSize:13}}>
+        มีบัญชีอยู่แล้ว? <Link to="/login" style={{color:'#0b79ff'}}>กลับไปหน้า Login</Link>
+      </div>
     </div>
   )
 }

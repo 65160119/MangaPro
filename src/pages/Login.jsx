@@ -27,8 +27,8 @@ export default function Login(){
     <div style={{minHeight:'70vh', display:'flex', alignItems:'center', justifyContent:'center', padding:20}}>
       <div style={{width:360, padding:28, borderRadius:12, boxShadow:'0 8px 24px rgba(0,0,0,0.08)', background:'#fff'}}>
         <div style={{textAlign:'center', marginBottom:12}}>
-          <h1 style={{margin:0, fontSize:22}}>MangaPro</h1>
-          <div style={{color:'#666', fontSize:14, marginTop:6}}>Sign in to your account</div>
+          <h1 style={{margin:0, fontSize:22}}>Owlbook</h1>
+          <div style={{color:'#666', fontSize:14, marginTop:6}}>เข้าสู่บัญชีของคุณ</div>
         </div>
         <form onSubmit={handleSubmit} style={{display:'flex',flexDirection:'column',gap:12}}>
           <input placeholder="Email" value={email} onChange={e=>setEmail(e.target.value)} type="email" style={{padding:10,borderRadius:8,border:'1px solid #e2e8f0', width:'100%'}} />
@@ -39,7 +39,7 @@ export default function Login(){
         <div style={{marginTop:12, textAlign:'center', display:'flex', justifyContent:'space-between', gap:8}}>
           <Link to="/forgot-password" style={{color:'#0b79ff', fontSize:13}}>Forgot password?</Link>
           <div style={{marginLeft:'auto', fontSize:13}}>
-            Don't have an account? <Link to="/signup" style={{color:'#0b79ff'}}>Register</Link>
+            ไม่มีบัญชี? <Link to="/signup" style={{color:'#0b79ff'}}>Register</Link>
           </div>
         </div>
       </div>

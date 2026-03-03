@@ -3,358 +3,392 @@ import { useAuth } from '../context/Auth'
 import supabase from '../lib/supabaseClient'
 import userMangaList from '../lib/userMangaList'
 import useFavorite from '../lib/favorites'
-import { Link } from 'react-router-dom'
-import RatingStars from '../components/RatingStars'
 import AddToListForm from '../components/AddToListForm'
+import OwlbookStyles from '../components/OwlbookStyles'
+import MangaDetail, { openStatusDetail } from '../components/MangaDetail'
 
-function FavoriteButtonSmall({ mangaId }){
+const STATUS_OPTIONS = ['planned', 'reading', 'completed', 'dropped']
+const STATUS_COLORS = { planned: '#a07ae0', reading: '#3B82F6', completed: '#10B981', dropped: '#EF4444' }
+const STATUS_LABELS = { planned: 'Plan to Read', reading: 'Reading', completed: 'Completed', dropped: 'Dropped' }
+
+function FavoriteButtonSmall({ mangaId }) {
   const { user } = useAuth()
-  const { isFavorite, loading, toggle } = useFavorite(mangaId)
+  const { isFavorite, toggle } = useFavorite(mangaId)
   if (!user) return null
-  const title = isFavorite ? 'เลิกชอบ' : 'เพิ่มในรายการโปรด'
   return (
-    <button
-      title={title}
-      onClick={async (e)=>{ e.stopPropagation(); await toggle() }}
-      style={{position:'absolute', top:8, right:8, zIndex:20, border:'none', background:'rgba(255,255,255,0.9)', padding:6, borderRadius:6, cursor:'pointer'}}
+    <button title={isFavorite ? 'เลิกชอบ' : 'เพิ่มในรายการโปรด'}
+      onClick={async (e) => { e.stopPropagation(); await toggle() }}
+      className="owl-fav-sm"
     >
-      <span style={{color: isFavorite ? '#e0245e' : '#666'}}>{isFavorite ? '♥' : '♡'}</span>
+      <span style={{ color: isFavorite ? '#e0245e' : '#bbb' }}>{isFavorite ? '♥' : '♡'}</span>
     </button>
   )
 }
 
-// Larger favorite button used inside modal
-function FavoriteButtonLarge({ mangaId }){
+function FavoriteButtonLarge({ mangaId }) {
   const { user } = useAuth()
-  const { isFavorite, loading, toggle } = useFavorite(mangaId)
+  const { isFavorite, toggle } = useFavorite(mangaId)
   if (!user) return null
-  const label = isFavorite ? 'เลิกชอบ' : 'เพิ่มในรายการโปรด'
   return (
-    <button onClick={async (e)=>{ e.stopPropagation(); if (!user) return alert('โปรดล็อกอินก่อน'); await toggle() }} style={{padding:'6px 10px', borderRadius:8, background:isFavorite? '#ffeef0' : '#f1f5f9', border:'1px solid #ddd', cursor:'pointer'}}>
-      {label}
+    <button className={`owl-btn owl-btn-fav${isFavorite ? ' active' : ''}`}
+      onClick={async (e) => { e.stopPropagation(); if (!user) return alert('โปรดล็อกอินก่อน'); await toggle() }}
+    >
+      {isFavorite ? '♥ เลิกชอบ' : '♡ เพิ่มในรายการโปรด'}
     </button>
   )
 }
 
-export default function Status(){
+// Status dropdown for overview entries
+function StatusDropdown({ value, onChange }) {
+  const [open, setOpen] = useState(false)
+  return (
+    <div className="owl-dropdown" style={{ minWidth: 130 }}>
+      <button
+        className={`owl-dropdown-btn${open ? ' open' : ''}`}
+        style={{ minWidth: 130, padding: '6px 32px 6px 10px', fontSize: 12, borderRadius: 8 }}
+        onClick={() => setOpen(o => !o)}
+      >
+        <span style={{ display: 'inline-block', width: 8, height: 8, borderRadius: '50%', background: STATUS_COLORS[value] || '#888', marginRight: 7, verticalAlign: 'middle' }} />
+        {STATUS_LABELS[value] || value}
+      </button>
+      {open && (
+        <>
+          <div style={{ position: 'fixed', inset: 0, zIndex: 199 }} onClick={() => setOpen(false)} />
+          <div className="owl-dropdown-menu" style={{ minWidth: 140 }}>
+            {STATUS_OPTIONS.map(s => (
+              <div key={s} className={`owl-dropdown-item${value === s ? ' selected' : ''}`}
+                style={{ fontSize: 13 }}
+                onClick={() => { onChange(s); setOpen(false) }}
+              >
+                <span style={{ display: 'inline-block', width: 8, height: 8, borderRadius: '50%', background: STATUS_COLORS[s], marginRight: 8, verticalAlign: 'middle' }} />
+                {STATUS_LABELS[s]}
+              </div>
+            ))}
+          </div>
+        </>
+      )}
+    </div>
+  )
+}
+
+export default function Status() {
   const { user } = useAuth()
   const [tab, setTab] = useState('favorites')
   const [favorites, setFavorites] = useState([])
   const [loadingFav, setLoadingFav] = useState(false)
+  const [overviewItems, setOverviewItems] = useState([])
+  const [loadingOverview, setLoadingOverview] = useState(false)
   const [selectedManga, setSelectedManga] = useState(null)
   const [detailLoading, setDetailLoading] = useState(false)
   const [showAddForm, setShowAddForm] = useState(false)
 
   const displayName = user?.email ? String(user.email).split('@')[0] : 'User'
-  const [overviewItems, setOverviewItems] = useState([])
-  const [loadingOverview, setLoadingOverview] = useState(false)
 
-  useEffect(()=>{
-    let mounted = true
-    async function loadFavorites(){
-      if (!user) { setFavorites([]); return }
-      setLoadingFav(true)
-      try{
-        const { data: favRows, error: favErr } = await supabase.from('User_Favorite').select('manga_id').eq('user_id', user.id)
-        if (favErr) { console.warn('fav fetch', favErr); if (mounted) setFavorites([]); return }
-        const ids = (favRows || []).map(r => r.manga_id).filter(Boolean)
-        if (ids.length === 0) { if (mounted) setFavorites([]); return }
-        const { data: mangasData, error: mangasErr } = await supabase.from('Manga').select('id, title, cover, tags, update').in('id', ids)
-        if (mangasErr) { console.warn('manga fetch', mangasErr); if (mounted) setFavorites([]); return }
-        const bucket = import.meta.env.VITE_SUPABASE_BUCKET || 'covers'
-        const normalizeItem = (item) => {
-          let imageUrl = null
-          if (item.cover) {
-            if (/^https?:\/\//i.test(item.cover)) imageUrl = item.cover
-            else { try { imageUrl = supabase.storage.from(bucket).getPublicUrl(item.cover)?.data?.publicUrl || null } catch(e){ imageUrl = null } }
-          }
-          let tagsArray = []
-          if (item.tags) {
-            if (Array.isArray(item.tags)) tagsArray = item.tags.map(t => String(t).trim()).filter(Boolean)
-            else if (typeof item.tags === 'string') tagsArray = item.tags.split(',').map(s => s.trim()).filter(Boolean)
-          }
-          return { ...item, imageUrl, tags: tagsArray }
-        }
-        const normalized = (mangasData || []).map(normalizeItem)
-        if (mounted) setFavorites(normalized)
-      }catch(e){ console.warn('loadFavorites', e); if (mounted) setFavorites([]) }
-      finally{ if (mounted) setLoadingFav(false) }
+  const normalizeManga = (item) => {
+    const bucket = import.meta.env.VITE_SUPABASE_BUCKET || 'covers'
+    let imageUrl = null
+    if (item.cover) {
+      if (/^https?:\/\//i.test(item.cover)) imageUrl = item.cover
+      else { try { imageUrl = supabase.storage.from(bucket).getPublicUrl(item.cover)?.data?.publicUrl || null } catch { imageUrl = null } }
     }
-    if (tab === 'favorites') loadFavorites()
+    let tags = []
+    if (item.tags) {
+      if (Array.isArray(item.tags)) tags = item.tags.map(t => String(t).trim()).filter(Boolean)
+      else if (typeof item.tags === 'string') tags = item.tags.split(',').map(s => s.trim()).filter(Boolean)
+    }
+    return { ...item, imageUrl, tags }
+  }
+
+  useEffect(() => {
+    let mounted = true
+    if (tab === 'favorites') {
+      setLoadingFav(true)
+      async function loadFavorites() {
+        try {
+          if (!user) { setFavorites([]); return }
+          const { data: favRows } = await supabase.from('User_Favorite').select('manga_id').eq('user_id', user.id)
+          const ids = (favRows || []).map(r => r.manga_id).filter(Boolean)
+          if (!ids.length) { if (mounted) setFavorites([]); return }
+          const { data } = await supabase.from('Manga').select('id, title, cover, tags, update').in('id', ids)
+          if (mounted) setFavorites((data || []).map(normalizeManga))
+        } catch { if (mounted) setFavorites([]) }
+        finally { if (mounted) setLoadingFav(false) }
+      }
+      loadFavorites()
+    }
     if (tab === 'overview') loadOverview()
-    return ()=>{ mounted = false }
+    return () => { mounted = false }
   }, [user, tab])
 
-  async function loadOverview(){
+  async function loadOverview() {
     if (!user) { setOverviewItems([]); return }
     setLoadingOverview(true)
-    try{
-      const { data: listRows, error: listErr } = await userMangaList.getList(user.id)
-      if (listErr) { console.warn('overview fetch', listErr); setOverviewItems([]); return }
-      const ids = (listRows||[]).map(r=>r.manga_id).filter(Boolean)
-      if (ids.length === 0) { setOverviewItems([]); return }
-      const { data: mangasData, error: mangasErr } = await supabase.from('Manga').select('id, title, cover').in('id', ids)
-      if (mangasErr) { console.warn('overview mangas', mangasErr); setOverviewItems([]); return }
-      const bucket = import.meta.env.VITE_SUPABASE_BUCKET || 'covers'
-      const normalize = (item) => {
-        let imageUrl = null
-        if (item.cover) {
-          if (/^https?:\/\//i.test(item.cover)) imageUrl = item.cover
-          else { try { imageUrl = supabase.storage.from(bucket).getPublicUrl(item.cover)?.data?.publicUrl || null } catch(e){ imageUrl = null } }
-        }
-        return { ...item, imageUrl }
-      }
-      const byId = Object.fromEntries((mangasData||[]).map(normalize).map(m=>[m.id,m]))
-      const merged = (listRows||[]).map(r => ({ ...r, manga: byId[r.manga_id] || null }))
-      setOverviewItems(merged)
-    }catch(e){ console.warn('loadOverview', e); setOverviewItems([]) }
-    finally{ setLoadingOverview(false) }
-  }
-
-  const handleOverviewUpdate = async (entryId, updates) => {
-    try{
-      const { error } = await userMangaList.updateEntry(entryId, updates)
-      if (error) return alert('Update error: '+(error.message||error))
-      await loadOverview()
-    }catch(e){ console.warn('overview update', e); alert(String(e)) }
-  }
-
-  const handleOverviewRemove = async (entryId) => {
-    if (!confirm('ลบรายการนี้จาก My List?')) return
-    try{
-      const { error } = await userMangaList.removeEntry(entryId)
-      if (error) return alert('Delete error: '+(error.message||error))
-      await loadOverview()
-    }catch(e){ console.warn('overview remove', e); alert(String(e)) }
-  }
-
-  // openManga: fetch full record and show detail modal (similar to Catalog)
-  const openManga = async (m) => {
-    setSelectedManga({ ...m, _loading: true })
-    setDetailLoading(true)
     try {
-      const { data, error } = await supabase.from('Manga').select('*').eq('id', m.id).single()
-      if (!error && data) {
-        const bucket = import.meta.env.VITE_SUPABASE_BUCKET || 'covers'
-        let imageUrl = m.imageUrl || null
-        if (!imageUrl && data.cover) {
-          if (/^https?:\/\//i.test(data.cover)) imageUrl = data.cover
-          else { try { imageUrl = supabase.storage.from(bucket).getPublicUrl(data.cover)?.data?.publicUrl || null } catch(e) { imageUrl = null } }
-        }
-        let tagsArray = []
-        if (data.tags) {
-          if (Array.isArray(data.tags)) tagsArray = data.tags.map(t => String(t).trim()).filter(Boolean)
-          else if (typeof data.tags === 'string') tagsArray = data.tags.split(',').map(s => s.trim()).filter(Boolean)
-        }
-        setSelectedManga({ ...m, ...data, imageUrl, tags: tagsArray, _loading: false })
-      } else {
-        setSelectedManga({ ...m, _loading: false })
-      }
-    } catch (e) {
-      console.error('fetch detail', e)
-      setSelectedManga({ ...m, _loading: false })
-    } finally {
-      setDetailLoading(false)
-    }
+      const { data: listRows } = await userMangaList.getList(user.id)
+      const ids = (listRows || []).map(r => r.manga_id).filter(Boolean)
+      if (!ids.length) { setOverviewItems([]); return }
+      const { data: mangasData } = await supabase.from('Manga').select('id, title, cover').in('id', ids)
+      const byId = Object.fromEntries((mangasData || []).map(normalizeManga).map(m => [m.id, m]))
+      setOverviewItems((listRows || []).map(r => ({ ...r, manga: byId[r.manga_id] || null })))
+    } catch { setOverviewItems([]) }
+    finally { setLoadingOverview(false) }
   }
 
-  const buildStoreSearchUrl = (site, title) => {
-    const q = encodeURIComponent(String(title || '').trim())
-    switch ((site || '').toLowerCase()){
-      case 'shopee': return `https://shopee.co.th/search?keyword=${q}`
-      case 'lazada': return `https://www.lazada.co.th/catalog/?q=${q}`
-      case 'yaakz': return `https://www.yaakz.com/search/?q=${q}`
-      case 'naiin': return `https://www.naiin.com/search-result?title=${q}`
-      case 'bookwalker': return `https://bookwalker.in.th/search/?word=${q}&order=relevance&page=1`
-      default: return `https://www.google.com/search?q=${q}`
-    }
+  const handleUpdate = async (entryId, updates) => {
+    try {
+      await userMangaList.updateEntry(entryId, updates)
+      await loadOverview()
+    } catch (e) { alert(String(e)) }
   }
+
+  const handleRemove = async (entryId) => {
+    if (!confirm('ลบรายการนี้จาก My List?')) return
+    try {
+      await userMangaList.removeEntry(entryId)
+      await loadOverview()
+    } catch (e) { alert(String(e)) }
+  }
+
+  const openManga = async (m) => {
+    await openStatusDetail({ m, setSelectedManga, setDetailLoading })
+  }
+
+  // group overview by status
+  const grouped = STATUS_OPTIONS.reduce((acc, s) => {
+    acc[s] = overviewItems.filter(e => (e.status || 'planned') === s)
+    return acc
+  }, {})
 
   return (
-    <div style={{padding:20}}>
-      <h2>สถานะของ {displayName}</h2>
+    <div className="owl-catalog">
+      <OwlbookStyles />
+      <style>{`
+        .owl-status-wrap { max-width: 1100px; margin: 0 auto; }
 
-      <div style={{display:'flex',gap:12,marginTop:12,borderBottom:'1px solid #eee',paddingBottom:8}}>
-        <button onClick={()=>setTab('favorites')} style={{background: tab==='favorites' ? '#eee' : 'transparent', padding:'6px 10px', borderRadius:6}}>Favorites</button>
-        <button onClick={()=>setTab('overview')} style={{background: tab==='overview' ? '#eee' : 'transparent', padding:'6px 10px', borderRadius:6}}>Overview</button>
-      </div>
+        /* ── Profile banner ── */
+        .owl-profile-banner {
+          display: flex; align-items: center; gap: 20px;
+          padding: 24px 28px; margin-bottom: 28px;
+          background: var(--owl-surface); border: 1.5px solid var(--owl-border);
+          border-radius: 16px;
+        }
+        .owl-profile-avatar {
+          width: 60px; height: 60px; border-radius: 50%;
+          background: linear-gradient(135deg, var(--owl-accent), var(--owl-purple-200));
+          display: flex; align-items: center; justify-content: center;
+          font-family: 'DM Serif Display', serif; font-size: 1.6rem; color: var(--owl-bg);
+          flex-shrink: 0;
+        }
+        .owl-profile-name {
+          font-family: 'DM Serif Display', serif; font-size: 1.5rem;
+          color: var(--owl-purple-700); margin: 0 0 2px;
+        }
+        .owl-profile-email { font-size: 13px; color: var(--owl-text-faint); }
 
-      {/* Modal for selected manga */}
-      {selectedManga ? (
-        <div onClick={()=>setSelectedManga(null)} style={{position:'fixed', inset:0, background:'rgba(0,0,0,0.5)', display:'flex', alignItems:'center', justifyContent:'center', zIndex:60}}>
-          <div onClick={e=>e.stopPropagation()} style={{width:680, maxWidth:'95%', background:'#fff', borderRadius:8, padding:18, boxShadow:'0 10px 40px rgba(0,0,0,0.4)'}}>
-            <div style={{display:'flex', gap:16}}>
-              <div style={{width:220, flex:'0 0 auto'}}>
-                {selectedManga.imageUrl ? <img src={selectedManga.imageUrl} alt={selectedManga.title} style={{width:'100%', height:320, objectFit:'contain', borderRadius:6}} /> : <div style={{width:'100%', height:320, background:'#f2f2f2', borderRadius:6}} />}
-              </div>
-              <div style={{flex:1}}>
-                <div style={{display:'flex', justifyContent:'space-between', alignItems:'start'}}>
-                  <div>
-                    <h3 style={{margin:0}}>{selectedManga.title}</h3>
-                    <div style={{display:'flex', alignItems:'center', gap:12, marginTop:6}}>
-                      <div style={{color:'#666'}}>{(selectedManga.tags||[]).join(', ') || 'Untagged'}</div>
-                      <div><RatingStars mangaId={selectedManga.id} /></div>
-                    </div>
-                  </div>
-                  <div style={{display:'flex', gap:8, alignItems:'center'}}>
-                    <button onClick={(e)=>{ e.stopPropagation(); if(!user) return alert('โปรดล็อกอินก่อน'); setShowAddForm(true) }} style={{padding:'6px 10px', borderRadius:8, background:'#eef2ff', border:'1px solid #c7d2fe', cursor:'pointer'}}>Add to My List</button>
-                    <FavoriteButtonLarge mangaId={selectedManga.id} />
-                    <button onClick={()=>setSelectedManga(null)} style={{border:'none', background:'transparent', fontSize:20, cursor:'pointer'}}>✕</button>
-                  </div>
-                </div>
-                <div style={{marginTop:12, color:'#333'}}>
-                  {selectedManga._loading ? (
-                    <div>กำลังโหลดข้อมูล...</div>
-                  ) : (
-                    <div>
-                      <div style={{marginBottom:8}}>
-                        <div style={{marginTop:6, fontSize:14, lineHeight:1.45}}>{selectedManga.description || 'ไม่มีข้อมูลคำอธิบาย'}</div>
-                      </div>
+        /* ── Tabs ── */
+        .owl-status-tabs {
+          display: flex; gap: 4px; margin-bottom: 28px;
+          border-bottom: 2px solid var(--owl-border);
+        }
+        .owl-status-tab {
+          padding: 9px 20px; font-size: 14px; font-weight: 500;
+          border: none; background: transparent; cursor: pointer;
+          color: var(--owl-text-faint); border-bottom: 2px solid transparent;
+          margin-bottom: -2px; font-family: 'DM Sans', sans-serif;
+          transition: all 0.15s;
+        }
+        .owl-status-tab.active { color: var(--owl-accent); border-bottom-color: var(--owl-accent); }
+        .owl-status-tab:hover:not(.active) { color: var(--owl-text-sub); }
 
-                      <div style={{marginTop:10, marginBottom:8}}>
-                        <div style={{fontSize:13, fontWeight:600, marginBottom:6}}>หาซื้อได้ที่</div>
-                        <div style={{display:'flex', gap:8, flexWrap:'wrap'}}>
-                          {
-                            (() => {
-                              const stores = [
-                                { key: 'shopee', label: 'Shopee', color: '#ff6d00' },
-                                { key: 'lazada', label: 'Lazada', color: '#ff5a5f' },
-                                { key: 'yaakz', label: 'Yaakz', color: '#0b73b7' },
-                                { key: 'naiin', label: 'นายอินทร์', color: '#0066cc' },
-                                { key: 'bookwalker', label: 'BookWalker', color: '#2b2b2b' }
-                              ]
-                              return stores.map(s => {
-                                const url = buildStoreSearchUrl(s.key, selectedManga.title)
-                                return (
-                                  <a key={s.key}
-                                    href={url}
-                                    onClick={e => { e.preventDefault(); try { window.open(url, '_blank', 'noopener') } catch { window.location.href = url } }}
-                                    style={{padding:'6px 10px', background:s.color, color:'#fff', borderRadius:6, textDecoration:'none'}}
-                                  >{s.label}</a>
-                                )
-                              })
-                            })()
-                          }
-                        </div>
-                      </div>
+        /* ── Favorites grid ── */
+        .owl-fav-grid {
+          display: grid; grid-template-columns: repeat(auto-fill, minmax(140px, 1fr));
+          gap: 16px;
+        }
+        .owl-fav-card {
+          cursor: pointer; position: relative; border-radius: 10px; overflow: hidden;
+          background: var(--owl-surface); border: 1.5px solid var(--owl-border);
+          transition: transform 0.2s, border-color 0.2s, box-shadow 0.2s;
+        }
+        .owl-fav-card:hover { transform: translateY(-4px); border-color: var(--owl-accent); box-shadow: 0 8px 28px rgba(0,0,0,0.5); }
+        .owl-fav-card-img { width: 100%; height: 190px; object-fit: cover; display: block; background: var(--owl-surface-2); }
+        .owl-fav-card-body { padding: 8px 10px 10px; }
+        .owl-fav-card-title { font-size: 12.5px; font-weight: 600; color: var(--owl-text); display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; line-height: 1.35; min-height: 2.6em; }
+        .owl-fav-card-date { font-size: 11px; color: var(--owl-text-faint); margin-top: 3px; }
 
-                      <div style={{marginTop:8}}>
-                        {selectedManga.author && (
-                          <div style={{marginBottom:6}}><strong>Author:</strong> <span style={{color:'#333'}}>{selectedManga.author}</span></div>
-                        )}
-                        {selectedManga.publisher && (
-                          <div style={{marginBottom:6}}><strong>Publisher:</strong> <span style={{color:'#333'}}>{selectedManga.publisher}</span></div>
-                        )}
-                        {selectedManga.volume && (
-                          <div style={{marginBottom:6}}><strong>Volume:</strong> <span style={{color:'#333'}}>{selectedManga.volume}</span></div>
-                        )}
-                      </div>
+        /* ── Overview group ── */
+        .owl-overview-group { margin-bottom: 28px; }
+        .owl-overview-group-title {
+          font-size: 13px; font-weight: 700; text-transform: uppercase;
+          letter-spacing: 0.06em; margin-bottom: 10px;
+          display: flex; align-items: center; gap: 8px;
+        }
+        .owl-overview-group-dot { width: 10px; height: 10px; border-radius: 50%; flex-shrink: 0; }
+        .owl-overview-list { display: flex; flex-direction: column; gap: 8px; }
 
-                      <div style={{marginTop:10}}>
-                        {(() => {
-                          const excluded = new Set(['imageUrl','id','cover','tags','title','_loading','description','author','publisher','volume','avg','votes'])
-                          const entries = Object.entries(selectedManga).filter(([k]) => !excluded.has(k))
-                          const order = ['status','update']
-                          const ordered = []
-                          const rest = []
-                          entries.forEach(([k,v]) => {
-                            if (order.includes(k)) ordered.push([k,v])
-                            else rest.push([k,v])
-                          })
-                          const final = [...ordered, ...rest]
-                          return final.map(([k,v]) => {
-                            let display = ''
-                            if (k === 'update' && v) {
-                              try { display = new Date(v).toLocaleDateString() } catch { display = String(v) }
-                            } else if (Array.isArray(v)) display = v.join(', ')
-                            else if (typeof v === 'object') display = JSON.stringify(v)
-                            else display = String(v)
-                            return (
-                              <div key={k} style={{marginBottom:8}}>
-                                <strong style={{textTransform:'capitalize'}}>{k.replace(/_/g,' ')}:</strong>
-                                <div style={{color:'#333'}}>{display}</div>
-                              </div>
-                            )
-                          })
-                        })()}
-                      </div>
-                    </div>
-                  )}
-                </div>
-                {showAddForm && selectedManga && <AddToListForm mangaId={selectedManga.id} onClose={()=>setShowAddForm(false)} onAdded={()=>{ setShowAddForm(false) }} />}
-              </div>
-            </div>
+        /* ── Overview entry ── */
+        .owl-overview-entry {
+          display: flex; gap: 14px; align-items: center;
+          background: var(--owl-surface); border: 1.5px solid var(--owl-border);
+          border-radius: 12px; padding: 12px 14px;
+          transition: border-color 0.15s;
+        }
+        .owl-overview-entry:hover { border-color: var(--owl-purple-200); }
+        .owl-overview-thumb {
+          width: 52px; height: 72px; object-fit: cover; border-radius: 6px;
+          background: var(--owl-surface-2); flex-shrink: 0; cursor: pointer;
+          transition: opacity 0.15s;
+        }
+        .owl-overview-thumb:hover { opacity: 0.8; }
+        .owl-overview-title { font-size: 13.5px; font-weight: 600; color: var(--owl-text); margin-bottom: 8px; cursor: pointer; }
+        .owl-overview-title:hover { color: var(--owl-accent); }
+        .owl-overview-controls { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
+        .owl-progress-input {
+          width: 80px; padding: 6px 10px; border-radius: 8px; font-size: 12px;
+          border: 1.5px solid var(--owl-border); background: var(--owl-bg);
+          color: var(--owl-text); font-family: 'DM Sans', sans-serif; outline: none;
+          transition: border 0.15s;
+        }
+        .owl-progress-input:focus { border-color: var(--owl-accent); }
+        .owl-overview-date { font-size: 11.5px; color: var(--owl-text-faint); margin-top: 6px; }
+        .owl-btn-remove {
+          margin-left: auto; padding: 5px 12px; border-radius: 8px; font-size: 12px;
+          border: 1px solid var(--owl-border); background: transparent;
+          color: var(--owl-text-faint); cursor: pointer; font-family: 'DM Sans', sans-serif;
+          transition: all 0.15s; flex-shrink: 0;
+        }
+        .owl-btn-remove:hover { border-color: var(--owl-red); color: var(--owl-red); }
+
+        /* ── Empty state ── */
+        .owl-status-empty { text-align: center; padding: 48px 0; color: var(--owl-text-faint); font-size: 14px; }
+        .owl-status-empty-icon { font-size: 2.5rem; margin-bottom: 10px; }
+      `}</style>
+
+      <div className="owl-status-wrap">
+
+        {/* Profile banner */}
+        <div className="owl-profile-banner">
+          <div className="owl-profile-avatar">{displayName[0]?.toUpperCase()}</div>
+          <div>
+            <div className="owl-profile-name">{displayName}</div>
+            <div className="owl-profile-email">{user?.email}</div>
           </div>
         </div>
-      ) : null}
 
-      <div style={{marginTop:16}}>
+        {/* Tabs */}
+        <div className="owl-status-tabs">
+          <button className={`owl-status-tab${tab === 'favorites' ? ' active' : ''}`} onClick={() => setTab('favorites')}>
+            ♥ รายการโปรด
+          </button>
+          <button className={`owl-status-tab${tab === 'overview' ? ' active' : ''}`} onClick={() => setTab('overview')}>
+            📋 My List
+          </button>
+        </div>
+
+        {/* ── Favorites tab ── */}
         {tab === 'favorites' && (
-          <div>
-            {loadingFav ? (
-              <div>Loading favorites...</div>
-            ) : (
-              <>
-                {favorites.length === 0 ? (
-                  <div style={{color:'#666'}}>ยังไม่มีรายการโปรด</div>
-                ) : (
-                    <section style={{marginBottom:20}}>
-                    <h3 style={{marginTop:6}}>รายการโปรดของคุณ</h3>
-                    <div style={{display:'grid', gridTemplateColumns: 'repeat(7, 1fr)', gap:16, paddingTop:12}}>
-                          {favorites.map(m => (
-                            <div key={m.id} style={{width:'100%', cursor:'pointer', position:'relative'}} onClick={() => openManga(m)}>
-                              {m.imageUrl ? <img src={m.imageUrl} alt={m.title} style={{width:'100%', height:200, objectFit:'cover', borderRadius:8}} /> : <div style={{width:'100%', height:200, background:'#eee', borderRadius:8}} />}
-                              <div style={{fontSize:14, marginTop:8, whiteSpace:'nowrap', overflow:'hidden', textOverflow:'ellipsis', maxWidth:'100%'}}>{m.title}</div>
-                              <div style={{fontSize:12, color:'#666'}}>{m.update ? new Date(m.update).toLocaleDateString() : ''}</div>
-                              <FavoriteButtonSmall mangaId={m.id} />
-                            </div>
-                          ))}
-                    </div>
-                  </section>
-                )}
-              </>
-            )}
-          </div>
+          loadingFav ? (
+            <div className="owl-loader-wrap">
+              <img src="/Owl-Book.png" className="owl-loader-img" alt="" />
+              <div className="owl-loader-text">กำลังโหลดรายการโปรด…</div>
+            </div>
+          ) : favorites.length === 0 ? (
+            <div className="owl-status-empty">
+              <div className="owl-status-empty-icon">♡</div>
+              <div>ยังไม่มีรายการโปรด</div>
+            </div>
+          ) : (
+            <div className="owl-fav-grid">
+              {favorites.map(m => (
+                <div key={m.id} className="owl-fav-card" onClick={() => openManga(m)}>
+                  {m.imageUrl
+                    ? <img src={m.imageUrl} alt={m.title} className="owl-fav-card-img" />
+                    : <div className="owl-fav-card-img" />
+                  }
+                  <div className="owl-fav-card-body">
+                    <div className="owl-fav-card-title">{m.title}</div>
+                    <div className="owl-fav-card-date">{m.update ? new Date(m.update).toLocaleDateString('th-TH') : ''}</div>
+                  </div>
+                  <FavoriteButtonSmall mangaId={m.id} />
+                </div>
+              ))}
+            </div>
+          )
         )}
 
+        {/* ── Overview tab ── */}
         {tab === 'overview' && (
-          <div>
-            {loadingOverview ? (
-              <div>Loading overview...</div>
-            ) : (
-              <>
-                {overviewItems.length === 0 ? (
-                  <div style={{color:'#666'}}>ยังไม่มีรายการใน My List</div>
-                ) : (
-                  <div style={{display:'grid', gridTemplateColumns:'repeat(3, 1fr)', gap:12}}>
-                    {overviewItems.map(entry => (
-                      <div key={entry.id} style={{border:'1px solid #eee', padding:12, borderRadius:8, display:'flex', gap:12, alignItems:'center'}}>
-                        <div style={{width:72, flex:'0 0 auto'}}>
-                          {entry.manga && entry.manga.imageUrl ? <img src={entry.manga.imageUrl} alt={entry.manga.title} style={{width:'100%', height:100, objectFit:'cover', borderRadius:4}} /> : <div style={{width:72, height:100, background:'#eee', borderRadius:4}} />}
-                        </div>
-                        <div style={{flex:1}}>
-                          <div style={{fontWeight:600}}>{entry.manga ? entry.manga.title : 'Unknown'}</div>
-                          <div style={{marginTop:6, display:'flex', gap:8, alignItems:'center'}}>
-                            <select value={entry.status || 'planned'} onChange={e => handleOverviewUpdate(entry.id, { status: e.target.value })}>
-                              <option value="planned">planned</option>
-                              <option value="reading">reading</option>
-                              <option value="completed">completed</option>
-                              <option value="dropped">dropped</option>
-                            </select>
-                            <input type="number" placeholder="progress" defaultValue={entry.progress ?? ''} onBlur={e => handleOverviewUpdate(entry.id, { progress: e.target.value ? Number(e.target.value) : null })} style={{width:84}} />
-                            <button onClick={() => handleOverviewRemove(entry.id)} style={{marginLeft:'auto', background:'#fee', border:'1px solid #fcc', padding:'6px 8px', borderRadius:6, cursor:'pointer'}}>Remove</button>
+          loadingOverview ? (
+            <div className="owl-loader-wrap">
+              <img src="/Owl-Book.png" className="owl-loader-img" alt="" />
+              <div className="owl-loader-text">กำลังโหลด My List…</div>
+            </div>
+          ) : overviewItems.length === 0 ? (
+            <div className="owl-status-empty">
+              <div className="owl-status-empty-icon">📚</div>
+              <div>ยังไม่มีรายการใน My List</div>
+            </div>
+          ) : (
+            STATUS_OPTIONS.map(s => {
+              const items = grouped[s]
+              if (!items.length) return null
+              return (
+                <div key={s} className="owl-overview-group">
+                  <div className="owl-overview-group-title" style={{ color: STATUS_COLORS[s] }}>
+                    <span className="owl-overview-group-dot" style={{ background: STATUS_COLORS[s] }} />
+                    {STATUS_LABELS[s]}
+                    <span style={{ color: 'var(--owl-text-faint)', fontWeight: 400, textTransform: 'none', letterSpacing: 0 }}>({items.length})</span>
+                  </div>
+                  <div className="owl-overview-list">
+                    {items.map(entry => (
+                      <div key={entry.id} className="owl-overview-entry">
+                        {entry.manga?.imageUrl
+                          ? <img src={entry.manga.imageUrl} alt={entry.manga?.title} className="owl-overview-thumb" onClick={() => openManga(entry.manga)} />
+                          : <div className="owl-overview-thumb" />
+                        }
+                        <div style={{ flex: 1, minWidth: 0 }}>
+                          <div className="owl-overview-title" onClick={() => entry.manga && openManga(entry.manga)}>
+                            {entry.manga?.title || 'Unknown'}
                           </div>
-                          <div style={{marginTop:6, fontSize:12, color:'#666'}}>Added: {entry.created_at ? new Date(entry.created_at).toLocaleString() : ''}</div>
+                          <div className="owl-overview-controls">
+                            <StatusDropdown value={entry.status || 'planned'} onChange={v => handleUpdate(entry.id, { status: v })} />
+                            <input
+                              type="number"
+                              placeholder="เล่มที่"
+                              className="owl-progress-input"
+                              defaultValue={entry.progress ?? ''}
+                              onBlur={e => handleUpdate(entry.id, { progress: e.target.value ? Number(e.target.value) : null })}
+                            />
+                            <button className="owl-btn-remove" onClick={() => handleRemove(entry.id)}>ลบ</button>
+                          </div>
+                          <div className="owl-overview-date">
+                            เพิ่มเมื่อ {entry.created_at ? new Date(entry.created_at).toLocaleDateString('th-TH') : ''}
+                          </div>
                         </div>
                       </div>
                     ))}
                   </div>
-                )}
-              </>
-            )}
-          </div>
+                </div>
+              )
+            })
+          )
         )}
       </div>
+
+      {selectedManga && (
+        <MangaDetail
+          manga={selectedManga}
+          user={user}
+          onClose={() => setSelectedManga(null)}
+          onRequestAddToList={() => setShowAddForm(true)}
+          showFavoriteButton={true}
+          FavoriteButtonLarge={FavoriteButtonLarge}
+          showProgressTab={false}
+        />
+      )}
+      {showAddForm && selectedManga && (
+        <AddToListForm mangaId={selectedManga.id} onClose={() => setShowAddForm(false)} onAdded={() => setShowAddForm(false)} />
+      )}
     </div>
   )
 }
