@@ -72,7 +72,7 @@ function StatusDropdown({ value, onChange }) {
 }
 
 export default function Status() {
-  const { user } = useAuth()
+  const { user, signOut } = useAuth()
   const [tab, setTab] = useState('favorites')
   const [favorites, setFavorites] = useState([])
   const [loadingFav, setLoadingFav] = useState(false)
@@ -81,6 +81,13 @@ export default function Status() {
   const [selectedManga, setSelectedManga] = useState(null)
   const [detailLoading, setDetailLoading] = useState(false)
   const [showAddForm, setShowAddForm] = useState(false)
+  const [settingsOpen, setSettingsOpen] = useState(false)
+  const [newPassword, setNewPassword] = useState('')
+  const [settingsMessage, setSettingsMessage] = useState('')
+  const [settingsError, setSettingsError] = useState(false)
+  const [settingsLoading, setSettingsLoading] = useState(false)
+  const [deleteConfirm, setDeleteConfirm] = useState('')
+  const [deleteLoading, setDeleteLoading] = useState(false)
 
   const displayName = user?.email ? String(user.email).split('@')[0] : 'User'
 
@@ -159,6 +166,50 @@ export default function Status() {
     return acc
   }, {})
 
+  const handlePasswordChange = async () => {
+    setSettingsMessage('')
+    setSettingsError(false)
+    if (!newPassword) {
+      setSettingsError(true)
+      setSettingsMessage('กรุณากรอกรหัสผ่านใหม่')
+      return
+    }
+    setSettingsLoading(true)
+    try {
+      const { error } = await supabase.auth.updateUser({ password: newPassword })
+      if (error) throw error
+      setSettingsError(false)
+      setSettingsMessage('เปลี่ยนรหัสผ่านสำเร็จแล้ว')
+      setNewPassword('')
+    } catch (e) {
+      setSettingsError(true)
+      setSettingsMessage(e.message || String(e))
+    } finally {
+      setSettingsLoading(false)
+    }
+  }
+
+  const handleDeleteAccount = async () => {
+    if (!user) return
+    if (deleteConfirm !== 'DELETE') return
+    if (!window.confirm('คุณแน่ใจหรือไม่ว่าต้องการลบบัญชีถาวร? การกระทำนี้ไม่สามารถย้อนกลับได้')) return
+    setSettingsMessage('')
+    setSettingsError(false)
+    setDeleteLoading(true)
+    try {
+      const { error } = await supabase.rpc('delete_user')
+      if (error) throw error
+      setSettingsMessage('ลบบัญชีสำเร็จแล้ว')
+      await signOut()
+      window.location.href = '/'
+    } catch (e) {
+      setSettingsError(true)
+      setSettingsMessage(e.message || String(e))
+    } finally {
+      setDeleteLoading(false)
+    }
+  }
+
   return (
     <div className="owl-catalog">
       <OwlbookStyles />
@@ -184,6 +235,14 @@ export default function Status() {
           color: var(--owl-purple-700); margin: 0 0 2px;
         }
         .owl-profile-email { font-size: 13px; color: var(--owl-text-faint); }
+
+        .owl-settings-btn {
+          margin-left: auto; padding: 6px 12px; border-radius: 999px;
+          border: 1px solid var(--owl-border); background: transparent;
+          color: var(--owl-text-faint); font-size: 12px; cursor: pointer;
+          font-family: 'DM Sans', sans-serif; transition: all 0.15s;
+        }
+        .owl-settings-btn:hover { border-color: var(--owl-accent); color: var(--owl-accent); background: var(--owl-bg); }
 
         /* ── Tabs ── */
         .owl-status-tabs {
@@ -262,6 +321,29 @@ export default function Status() {
         /* ── Empty state ── */
         .owl-status-empty { text-align: center; padding: 48px 0; color: var(--owl-text-faint); font-size: 14px; }
         .owl-status-empty-icon { font-size: 2.5rem; margin-bottom: 10px; }
+
+        /* ── Settings modal ── */
+        .owl-settings-modal {
+          width: 420px; max-width: 94vw;
+          background: var(--owl-bg-2); border-radius: 16px; padding: 20px 22px;
+          box-shadow: 0 20px 60px rgba(0,0,0,0.7); border: 1.5px solid var(--owl-border);
+        }
+        .owl-settings-title { font-size: 15px; font-weight: 600; color: var(--owl-purple-700); }
+        .owl-settings-section { margin-top: 14px; }
+        .owl-settings-label { font-size: 12px; font-weight: 600; color: var(--owl-text-faint); text-transform: uppercase; letter-spacing: 0.06em; margin-bottom: 6px; }
+        .owl-settings-input {
+          width: 100%; padding: 8px 12px; border-radius: 10px;
+          border: 1.5px solid var(--owl-border); background: var(--owl-bg);
+          font-size: 13px; color: var(--owl-text); outline: none;
+          font-family: 'DM Sans', sans-serif; transition: border 0.2s;
+        }
+        .owl-settings-input:focus { border-color: var(--owl-accent); }
+        .owl-settings-hint { font-size: 12px; color: var(--owl-text-faint); margin-top: 4px; }
+        .owl-settings-msg {
+          margin-top: 12px; padding: 8px 11px; border-radius: 9px; font-size: 12.5px;
+        }
+        .owl-settings-msg.ok { background: rgba(16,185,129,0.08); border: 1px solid #10B981; color: #10B981; }
+        .owl-settings-msg.err { background: rgba(240,112,128,0.08); border: 1px solid var(--owl-red); color: var(--owl-red); }
       `}</style>
 
       <div className="owl-status-wrap">
@@ -273,6 +355,9 @@ export default function Status() {
             <div className="owl-profile-name">{displayName}</div>
             <div className="owl-profile-email">{user?.email}</div>
           </div>
+          <button className="owl-settings-btn" onClick={() => setSettingsOpen(true)}>
+            ⚙ Settings
+          </button>
         </div>
 
         {/* Tabs */}
@@ -388,6 +473,67 @@ export default function Status() {
       )}
       {showAddForm && selectedManga && (
         <AddToListForm mangaId={selectedManga.id} onClose={() => setShowAddForm(false)} onAdded={() => setShowAddForm(false)} />
+      )}
+
+      {settingsOpen && (
+        <div className="owl-sub-overlay" onClick={() => setSettingsOpen(false)}>
+          <div className="owl-settings-modal" onClick={e => e.stopPropagation()}>
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 4 }}>
+              <div className="owl-settings-title">Settings</div>
+              <button className="owl-close-btn" onClick={() => setSettingsOpen(false)}>✕</button>
+            </div>
+
+            {/* Password section */}
+            <div className="owl-settings-section">
+              <div className="owl-settings-label">เปลี่ยนรหัสผ่าน</div>
+              <input
+                type="password"
+                className="owl-settings-input"
+                value={newPassword}
+                onChange={e => setNewPassword(e.target.value)}
+                placeholder="รหัสผ่านใหม่"
+              />
+              <div className="owl-settings-hint">รหัสผ่านใหม่จะมีผลกับการเข้าสู่ระบบครั้งถัดไป</div>
+              <button
+                className="owl-btn owl-btn-add"
+                style={{ marginTop: 8 }}
+                onClick={handlePasswordChange}
+                disabled={settingsLoading}
+              >
+                {settingsLoading ? 'กำลังอัปเดต…' : 'บันทึกรหัสผ่านใหม่'}
+              </button>
+            </div>
+
+            {/* Delete account section */}
+            <div className="owl-settings-section" style={{ borderTop: '1px solid var(--owl-border)', paddingTop: 12 }}>
+              <div className="owl-settings-label" style={{ color: 'var(--owl-red)' }}>ลบบัญชี</div>
+              <div className="owl-settings-hint">
+                การลบบัญชีเป็นการกระทำถาวร และอาจต้องมีการตั้งค่าที่ฝั่งเซิร์ฟเวอร์ใน Supabase
+              </div>
+              <input
+                className="owl-settings-input"
+                style={{ marginTop: 8 }}
+                value={deleteConfirm}
+                onChange={e => setDeleteConfirm(e.target.value)}
+                placeholder="พิมพ์ DELETE เพื่อยืนยัน"
+              />
+              <button
+                className="owl-btn"
+                style={{ marginTop: 8, background: 'var(--owl-red)', color: '#fff', border: 'none' }}
+                onClick={handleDeleteAccount}
+                disabled={deleteLoading || deleteConfirm.trim() !== 'DELETE'}
+              >
+                {deleteLoading ? 'กำลังลบบัญชี…' : 'ลบบัญชีถาวร'}
+              </button>
+            </div>
+
+            {settingsMessage && (
+              <div className={`owl-settings-msg ${settingsError ? 'err' : 'ok'}`}>
+                {settingsMessage}
+              </div>
+            )}
+          </div>
+        </div>
       )}
     </div>
   )

@@ -1,35 +1,102 @@
 import React, { useState } from 'react'
 import { Link } from 'react-router-dom'
 import supabase from '../lib/supabaseClient'
+import OwlbookStyles from '../components/OwlbookStyles'
 
-export default function ForgotPassword(){
+export default function ForgotPassword() {
   const [email, setEmail] = useState('')
   const [status, setStatus] = useState(null)
+  const [isError, setIsError] = useState(false)
   const [loading, setLoading] = useState(false)
 
-  const handleSubmit = async (e) => {
-    e.preventDefault()
+  const handleSubmit = async () => {
     setStatus(null)
+    if (!email) { setStatus('กรุณากรอก Email'); setIsError(true); return }
     setLoading(true)
-    try{
-      // request password reset link; redirect will bring user to /update-password
-      const { data, error } = await supabase.auth.resetPasswordForEmail(email, { redirectTo: window.location.origin + '/update-password' })
+    try {
+      const { error } = await supabase.auth.resetPasswordForEmail(email, {
+        redirectTo: window.location.origin + '/update-password'
+      })
       if (error) throw error
-      setStatus('Check your email for a password reset link.')
-    }catch(e){ setStatus('Error: ' + (e.message || String(e))) }
-    finally{ setLoading(false) }
+      setIsError(false)
+      setStatus('ส่งลิงก์รีเซ็ตรหัสผ่านไปที่อีเมลของคุณแล้ว โปรดตรวจสอบกล่องจดหมาย')
+    } catch (e) {
+      setIsError(true)
+      setStatus(e.message || String(e))
+    }
+    finally { setLoading(false) }
   }
 
   return (
-    <div style={{padding:20, maxWidth:480, margin:'20px auto'}}>
-      <h2>Forgot password</h2>
-      <form onSubmit={handleSubmit} style={{display:'flex',flexDirection:'column',gap:8}}>
-        <input placeholder="Email" value={email} onChange={e=>setEmail(e.target.value)} type="email" style={{padding:8,borderRadius:6,border:'1px solid #ccc'}} />
-        {status && <div>{status}</div>}
-        <button type="submit" disabled={loading} style={{padding:'8px 12px', borderRadius:6}}>{loading ? 'Sending...' : 'Send reset link'}</button>
-      </form>
-      <div style={{marginTop:12, fontSize:13}}>
-        จำรหัสได้แล้ว? <Link to="/login" style={{color:'#0b79ff'}}>กลับไปหน้า Login</Link>
+    <div className="owl-catalog owl-login-bg">
+      <OwlbookStyles />
+      <style>{`
+        .owl-login-bg {
+          display: flex; align-items: center; justify-content: center; padding: 24px;
+        }
+        .owl-login-card {
+          width: 380px; max-width: 100%;
+          background: var(--owl-surface); border: 1.5px solid var(--owl-border);
+          border-radius: 20px; padding: 36px 32px;
+          box-shadow: var(--owl-shadow-lg);
+          animation: owl-fadein 0.25s ease;
+        }
+        @keyframes owl-fadein { from { opacity:0; transform:translateY(10px) } to { opacity:1; transform:none } }
+        .owl-login-logo {
+          display: flex; flex-direction: column; align-items: center; margin-bottom: 28px; gap: 10px;
+        }
+        .owl-login-logo img { width: 72px; height: 72px; object-fit: contain; }
+        .owl-login-sub { font-size: 13.5px; color: var(--owl-text-faint); margin: 0; text-align: center; line-height: 1.6; }
+        .owl-login-fields { display: flex; flex-direction: column; gap: 12px; margin-bottom: 8px; }
+        .owl-login-btn {
+          width: 100%; padding: 11px; border-radius: 11px; border: none;
+          background: linear-gradient(135deg, var(--owl-accent), var(--owl-purple-200));
+          color: var(--owl-bg); font-size: 14.5px; font-weight: 700;
+          font-family: 'DM Sans', sans-serif; cursor: pointer;
+          transition: opacity 0.15s, transform 0.15s; margin-top: 4px;
+        }
+        .owl-login-btn:hover:not(:disabled) { opacity: 0.88; transform: translateY(-1px); }
+        .owl-login-btn:disabled { opacity: 0.5; cursor: not-allowed; }
+        .owl-login-footer { margin-top: 18px; text-align: center; font-size: 13px; color: var(--owl-text-faint); }
+        .owl-login-link { color: var(--owl-accent); text-decoration: none; transition: opacity 0.15s; }
+        .owl-login-link:hover { opacity: 0.75; }
+        .owl-status-success {
+          padding: 9px 13px; border-radius: 9px; font-size: 13px; margin-bottom: 8px;
+          background: rgba(16,185,129,0.1); border: 1px solid #10B981; color: #10B981;
+        }
+        .owl-status-error {
+          padding: 9px 13px; border-radius: 9px; font-size: 13px; margin-bottom: 8px;
+          background: rgba(240,112,128,0.1); border: 1px solid var(--owl-red); color: var(--owl-red);
+        }
+      `}</style>
+
+      <div className="owl-login-card">
+        <div className="owl-login-logo">
+          <img src="/Owl-Book.png" alt="Owlbook" />
+          <h1 className="owl-modal-title" style={{ textAlign: 'center' }}>ลืมรหัสผ่าน?</h1>
+          <p className="owl-login-sub">กรอก Email ของคุณ<br />แล้วเราจะส่งลิงก์รีเซ็ตให้คุณ</p>
+        </div>
+
+        <div className="owl-login-fields">
+          <input className="owl-input" style={{ minWidth: 0, width: '100%', boxSizing: 'border-box' }}
+            type="email" placeholder="Email"
+            value={email} onChange={e => setEmail(e.target.value)}
+            onKeyDown={e => e.key === 'Enter' && handleSubmit()}
+          />
+        </div>
+
+        {status && (
+          <div className={isError ? 'owl-status-error' : 'owl-status-success'}>{status}</div>
+        )}
+
+        <button className="owl-login-btn" onClick={handleSubmit} disabled={loading}>
+          {loading ? 'กำลังส่ง…' : 'ส่งลิงก์รีเซ็ต'}
+        </button>
+
+        <div className="owl-login-footer">
+          จำรหัสได้แล้ว?{' '}
+          <Link to="/login" className="owl-login-link">กลับไปหน้าเข้าสู่ระบบ</Link>
+        </div>
       </div>
     </div>
   )
