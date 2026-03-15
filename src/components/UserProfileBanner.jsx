@@ -28,7 +28,7 @@ export default function UserProfileBanner({ userId, displayName, onClose }) {
       try {
         // Profile name
         const { data: profileData, error: profileErr } = await supabase
-          .from('Profiles')
+          .from('profiles')
           .select('user_name')
           .eq('id', userId)
           .single()

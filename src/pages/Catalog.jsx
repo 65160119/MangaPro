@@ -98,7 +98,7 @@ export default function Catalog() {
       if (favCnt > 0) {
         const ids = favRows.map(r => r.user_id).filter(Boolean)
         if (ids.length > 0) {
-          const { data: profilesData, error: profilesErr } = await supabase.from('Profiles').select('id, user_name').in('id', ids)
+          const { data: profilesData, error: profilesErr } = await supabase.from('profiles').select('id, user_name').in('id', ids)
           if (!profilesErr && profilesData) {
             const profilesMap = Object.fromEntries(profilesData.map(r => [r.id, r.user_name]))
             favUsersList = ids.map(id => ({ id, name: profilesMap[id] ?? String(id) }))

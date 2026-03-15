@@ -127,7 +127,7 @@ export default function Forum() {
     let profilesMap = {}
     if (userIds.length > 0) {
       const { data: profilesData, error: profilesErr } = await supabase
-        .from('Profiles').select('id, user_name').in('id', userIds)
+        .from('profiles').select('id, user_name').in('id', userIds)
       if (!profilesErr && profilesData)
         profilesMap = Object.fromEntries(profilesData.map(r => [r.id, r.user_name]))
     }

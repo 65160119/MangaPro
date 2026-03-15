@@ -198,7 +198,7 @@ export default function MangaDetail({
               {showProgressTab && (
                 <div className="owl-tabs">
                   <button className={`owl-tab${activeTab === 'details' ? ' active' : ''}`} onClick={() => onChangeTab?.('details')}>Details</button>
-                  <button className={`owl-tab${activeTab === 'stats' ? ' active' : ''}`} onClick={() => onChangeTab?.('stats')}>Overview</button>
+                  <button className={`owl-tab${activeTab === 'stats' ? ' active' : ''}`} onClick={() => onChangeTab?.('stats')}>Stats</button>
                 </div>
               )}
 
