@@ -31,6 +31,13 @@ export default function OwlbookStyles() {
       --owl-shadow-lg:   0 8px 48px rgba(0,0,0,0.72);
     }
 
+    body {
+      margin: 0;
+      background: var(--owl-bg);
+      color: var(--owl-text);
+      font-family: 'DM Sans', sans-serif;
+    }
+
     .owl-catalog * { font-family: 'DM Sans', sans-serif; color: var(--owl-text); box-sizing: border-box; }
     .owl-catalog { background: var(--owl-bg); min-height: 100vh; padding: 24px 36px; }
 
