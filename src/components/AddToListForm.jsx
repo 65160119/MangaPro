@@ -19,6 +19,7 @@ export default function AddToListForm({ mangaId, onClose, onAdded }) {
   const [errorMsg, setErrorMsg] = useState('')
   const [maxProgress, setMaxProgress] = useState(null)
   const [statusOpen, setStatusOpen] = useState(false)
+  const [existingId, setExistingId] = useState(null)
 
   React.useEffect(() => {
     let mounted = true
@@ -39,6 +40,30 @@ export default function AddToListForm({ mangaId, onClose, onAdded }) {
     return () => { mounted = false }
   }, [mangaId])
 
+  // preload existing entry (if already in My List)
+  React.useEffect(() => {
+    let mounted = true
+    async function loadExisting() {
+      if (!user || !mangaId) return
+      try {
+        const { data, error } = await supabase
+          .from('user_manga_list')
+          .select('id, status, progress')
+          .eq('user_id', user.id)
+          .eq('manga_id', mangaId)
+          .limit(1)
+        if (!mounted || error) return
+        const row = (data || [])[0]
+        if (!row) return
+        setExistingId(row.id)
+        setStatus(row.status || 'planned')
+        setProgress(row.progress != null ? String(row.progress) : '')
+      } catch { }
+    }
+    loadExisting()
+    return () => { mounted = false }
+  }, [user, mangaId])
+
   const handleSubmit = async () => {
     if (!user) return alert('โปรดล็อกอินก่อน')
     if (!mangaId) { setErrorMsg('Missing manga id'); return }
@@ -52,9 +77,19 @@ export default function AddToListForm({ mangaId, onClose, onAdded }) {
         if (maxProgress && p > maxProgress) { setErrorMsg(`Progress ต้องไม่เกิน ${maxProgress}`); setLoading(false); return }
         opts.progress = p
       }
-      const { error } = await userMangaList.addToList(user.id, mangaId, opts)
+      // if already exists, update instead of inserting duplicate
+      let error = null
+      if (existingId) {
+        const updates = { status: opts.status }
+        if (Object.prototype.hasOwnProperty.call(opts, 'progress')) updates.progress = opts.progress
+        const res = await userMangaList.updateEntry(existingId, updates)
+        error = res.error
+      } else {
+        const res = await userMangaList.addToList(user.id, mangaId, opts)
+        error = res.error
+      }
       if (error) {
-        if (error.code === '23505') setErrorMsg('รายการนี้มีอยู่ใน My List แล้ว')
+        if (!existingId && error.code === '23505') setErrorMsg('รายการนี้มีอยู่ใน My List แล้ว')
         else setErrorMsg(error.message || String(error))
       } else {
         if (onAdded) onAdded()
@@ -65,6 +100,7 @@ export default function AddToListForm({ mangaId, onClose, onAdded }) {
   }
 
   const selectedStatus = STATUS_OPTIONS.find(s => s.value === status)
+  const isEditing = !!existingId
 
   return (
     <div className="owl-overlay" style={{ zIndex: 120 }} onClick={onClose}>
@@ -73,7 +109,7 @@ export default function AddToListForm({ mangaId, onClose, onAdded }) {
 
         {/* Header */}
         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 20 }}>
-          <h3 className="owl-atl-title">+ เพิ่มใน My List</h3>
+          <h3 className="owl-atl-title">{isEditing ? 'แก้ไขใน My List' : '+ เพิ่มใน My List'}</h3>
           <button className="owl-close-btn" onClick={onClose}>✕</button>
         </div>
 
@@ -137,7 +173,7 @@ export default function AddToListForm({ mangaId, onClose, onAdded }) {
           </button>
           <button className="owl-btn owl-btn-add" onClick={handleSubmit} disabled={loading}
             style={{ opacity: loading ? 0.6 : 1 }}>
-            {loading ? 'กำลังเพิ่ม…' : '+ เพิ่มใน List'}
+            {loading ? (isEditing ? 'กำลังบันทึก…' : 'กำลังเพิ่ม…') : (isEditing ? 'บันทึก' : '+ เพิ่มใน List')}
           </button>
         </div>
 

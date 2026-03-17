@@ -82,7 +82,10 @@ export default function Status() {
   const [detailLoading, setDetailLoading] = useState(false)
   const [showAddForm, setShowAddForm] = useState(false)
   const [settingsOpen, setSettingsOpen] = useState(false)
+  const [currentPassword, setCurrentPassword] = useState('')
   const [newPassword, setNewPassword] = useState('')
+  const [showCurrentPassword, setShowCurrentPassword] = useState(false)
+  const [showNewPassword, setShowNewPassword] = useState(false)
   const [settingsMessage, setSettingsMessage] = useState('')
   const [settingsError, setSettingsError] = useState(false)
   const [settingsLoading, setSettingsLoading] = useState(false)
@@ -169,17 +172,27 @@ export default function Status() {
   const handlePasswordChange = async () => {
     setSettingsMessage('')
     setSettingsError(false)
-    if (!newPassword) {
+    if (!currentPassword || !newPassword) {
       setSettingsError(true)
-      setSettingsMessage('กรุณากรอกรหัสผ่านใหม่')
+      setSettingsMessage('กรุณากรอกรหัสผ่านปัจจุบันและรหัสผ่านใหม่')
       return
     }
     setSettingsLoading(true)
     try {
+      // ยืนยันรหัสผ่านปัจจุบันด้วยการล็อกอินอีกครั้ง
+      const { error: reauthError } = await supabase.auth.signInWithPassword({
+        email: user?.email || '',
+        password: currentPassword,
+      })
+      if (reauthError) {
+        throw new Error('รหัสผ่านปัจจุบันไม่ถูกต้อง')
+      }
+
       const { error } = await supabase.auth.updateUser({ password: newPassword })
       if (error) throw error
       setSettingsError(false)
       setSettingsMessage('เปลี่ยนรหัสผ่านสำเร็จแล้ว')
+      setCurrentPassword('')
       setNewPassword('')
     } catch (e) {
       setSettingsError(true)
@@ -338,6 +351,12 @@ export default function Status() {
           font-family: 'DM Sans', sans-serif; transition: border 0.2s;
         }
         .owl-settings-input:focus { border-color: var(--owl-accent); }
+        .owl-settings-password-wrap { position: relative; }
+        .owl-settings-toggle-eye {
+          position: absolute; right: 10px; top: 50%; transform: translateY(-50%);
+          border: none; background: transparent; color: var(--owl-text-faint);
+          cursor: pointer; font-size: 12px; padding: 2px 4px;
+        }
         .owl-settings-hint { font-size: 12px; color: var(--owl-text-faint); margin-top: 4px; }
         .owl-settings-msg {
           margin-top: 12px; padding: 8px 11px; border-radius: 9px; font-size: 12.5px;
@@ -486,14 +505,39 @@ export default function Status() {
             {/* Password section */}
             <div className="owl-settings-section">
               <div className="owl-settings-label">เปลี่ยนรหัสผ่าน</div>
-              <input
-                type="password"
-                className="owl-settings-input"
-                value={newPassword}
-                onChange={e => setNewPassword(e.target.value)}
-                placeholder="รหัสผ่านใหม่"
-              />
-              <div className="owl-settings-hint">รหัสผ่านใหม่จะมีผลกับการเข้าสู่ระบบครั้งถัดไป</div>
+              <div className="owl-settings-password-wrap" style={{ marginBottom: 8 }}>
+                <input
+                  type={showCurrentPassword ? 'text' : 'password'}
+                  className="owl-settings-input"
+                  value={currentPassword}
+                  onChange={e => setCurrentPassword(e.target.value)}
+                  placeholder="รหัสผ่านปัจจุบัน"
+                />
+                <button
+                  type="button"
+                  className="owl-settings-toggle-eye"
+                  onClick={() => setShowCurrentPassword(v => !v)}
+                >
+                  {showCurrentPassword ? 'ซ่อน' : 'แสดง'}
+                </button>
+              </div>
+              <div className="owl-settings-password-wrap">
+                <input
+                  type={showNewPassword ? 'text' : 'password'}
+                  className="owl-settings-input"
+                  value={newPassword}
+                  onChange={e => setNewPassword(e.target.value)}
+                  placeholder="รหัสผ่านใหม่"
+                />
+                <button
+                  type="button"
+                  className="owl-settings-toggle-eye"
+                  onClick={() => setShowNewPassword(v => !v)}
+                >
+                  {showNewPassword ? 'ซ่อน' : 'แสดง'}
+                </button>
+              </div>
+              <div className="owl-settings-hint">ใส่รหัสผ่านปัจจุบันจากนั้นกำหนดรหัสผ่านใหม่ ระบบจะใช้รหัสใหม่เมื่อเข้าสู่ระบบครั้งถัดไป</div>
               <button
                 className="owl-btn owl-btn-add"
                 style={{ marginTop: 8 }}
@@ -508,7 +552,7 @@ export default function Status() {
             <div className="owl-settings-section" style={{ borderTop: '1px solid var(--owl-border)', paddingTop: 12 }}>
               <div className="owl-settings-label" style={{ color: 'var(--owl-red)' }}>ลบบัญชี</div>
               <div className="owl-settings-hint">
-                การลบบัญชีเป็นการกระทำถาวร และอาจต้องมีการตั้งค่าที่ฝั่งเซิร์ฟเวอร์ใน Supabase
+                การลบบัญชีเป็นการกระทำถาวรและข้อมูลทั้งหมดจะถูกลบอย่างถาวร โปรดพิมพ์ "DELETE" ในช่องด้านล่างเพื่อยืนยันว่าคุณต้องการลบบัญชีของคุณ
               </div>
               <input
                 className="owl-settings-input"

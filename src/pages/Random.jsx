@@ -3,6 +3,8 @@ import supabase from '../lib/supabaseClient'
 import LogoLoader from '../components/LogoLoader'
 import OwlbookStyles from '../components/OwlbookStyles'
 import MangaDetail, { openRandomDetail } from '../components/MangaDetail'
+import AddToListForm from '../components/AddToListForm'
+import { useAuth } from '../context/Auth'
 
 export default function Random() {
   const [covers, setCovers] = useState([])
@@ -26,6 +28,9 @@ export default function Random() {
   const timerRef = useRef(null)
   const [selectedManga, setSelectedManga] = useState(null)
   const [detailLoading, setDetailLoading] = useState(false)
+  const [showAddForm, setShowAddForm] = useState(false)
+
+  const { user } = useAuth()
 
   const audioRef = useRef(null)
   const getAudio = () => {
@@ -361,11 +366,19 @@ export default function Random() {
       {selectedManga && (
         <MangaDetail
           manga={selectedManga}
-          user={null}
+          user={user}
           onClose={() => setSelectedManga(null)}
-          onRequestAddToList={null}
+          onRequestAddToList={() => setShowAddForm(true)}
           showFavoriteButton={false}
           showProgressTab={false}
+          showRating={false}
+        />
+      )}
+      {showAddForm && selectedManga && (
+        <AddToListForm
+          mangaId={selectedManga.id}
+          onClose={() => setShowAddForm(false)}
+          onAdded={() => setShowAddForm(false)}
         />
       )}
     </div>

@@ -4,7 +4,7 @@ import { useAuth } from '../context/Auth'
 import UserProfileBanner from '../components/UserProfileBanner'
 import OwlbookStyles from '../components/OwlbookStyles'
 
-function PostCard({ post, onDelete, onAddComment, user, onUserClick }) {
+function PostCard({ post, onDelete, onAddComment, onDeleteComment, user, onUserClick }) {
   const [commentText, setCommentText] = useState('')
   const [expanded, setExpanded] = useState(false)
 
@@ -53,6 +53,14 @@ function PostCard({ post, onDelete, onAddComment, user, onUserClick }) {
                   </span>
                   <span className="owl-post-dot">·</span>
                   <span style={{ fontSize: 12, color: 'var(--owl-text-faint)' }}>{new Date(c.created_at).toLocaleString('th-TH')}</span>
+                  {user && c.user_id === user.id && (
+                    <button
+                      className="owl-comment-delete"
+                      onClick={() => onDeleteComment && onDeleteComment(c.id)}
+                    >
+                      ลบ
+                    </button>
+                  )}
                 </div>
                 <div className="owl-comment-body">{c.content}</div>
               </div>
@@ -165,6 +173,13 @@ export default function Forum() {
     await fetchPosts()
   }
 
+  async function handleDeleteComment(commentId) {
+    setError(null)
+    const { error } = await supabase.from('Forum_comment').delete().eq('id', commentId)
+    if (error) { setError(error.message); return }
+    await fetchPosts()
+  }
+
   return (
     <div className="owl-catalog">
       <OwlbookStyles />
@@ -269,6 +284,13 @@ export default function Forum() {
           margin-bottom: 8px; border: 1px solid var(--owl-border);
         }
         .owl-comment-meta { display: flex; align-items: center; gap: 6px; margin-bottom: 5px; font-size: 12.5px; color: var(--owl-text-faint); }
+        .owl-comment-delete {
+          margin-left: auto; padding: 2px 8px; border-radius: 6px; font-size: 11px;
+          border: 1px solid var(--owl-border); background: transparent;
+          color: var(--owl-text-faint); cursor: pointer; font-family: 'DM Sans', sans-serif;
+          transition: all 0.15s;
+        }
+        .owl-comment-delete:hover { border-color: var(--owl-red); color: var(--owl-red); }
         .owl-comment-body { font-size: 13.5px; color: var(--owl-text); line-height: 1.55; }
         .owl-comment-form { display: flex; gap: 8px; margin-top: 10px; }
         .owl-comment-input { flex: 1; min-width: 0; }
@@ -383,6 +405,7 @@ export default function Forum() {
               post={p}
               onDelete={handleDelete}
               onAddComment={handleAddComment}
+              onDeleteComment={handleDeleteComment}
               user={user}
               onUserClick={(uid, name) => setProfileUser({ id: uid, name })}
             />

@@ -6,6 +6,7 @@ import OwlbookStyles from '../components/OwlbookStyles'
 export default function Login() {
   const [email, setEmail] = useState('')
   const [password, setPassword] = useState('')
+  const [showPassword, setShowPassword] = useState(false)
   const [error, setError] = useState(null)
   const [loading, setLoading] = useState(false)
   const navigate = useNavigate()
@@ -44,6 +45,14 @@ export default function Login() {
         .owl-login-logo img { width: 72px; height: 72px; object-fit: contain; }
         .owl-login-sub { font-size: 13.5px; color: var(--owl-text-faint); margin: 0; text-align: center; }
         .owl-login-fields { display: flex; flex-direction: column; gap: 12px; margin-bottom: 8px; }
+        .owl-login-password-wrap {
+          position: relative; width: 100%;
+        }
+        .owl-login-toggle-eye {
+          position: absolute; right: 10px; top: 50%; transform: translateY(-50%);
+          border: none; background: transparent; color: var(--owl-text-faint);
+          cursor: pointer; font-size: 12px; padding: 2px 4px;
+        }
         .owl-login-btn {
           width: 100%; padding: 11px; border-radius: 11px; border: none;
           background: linear-gradient(135deg, var(--owl-accent), var(--owl-purple-200));
@@ -76,11 +85,20 @@ export default function Login() {
             value={email} onChange={e => setEmail(e.target.value)}
             onKeyDown={e => e.key === 'Enter' && handleSubmit()}
           />
-          <input className="owl-input" style={{ minWidth: 0, width: '100%', boxSizing: 'border-box' }}
-            type="password" placeholder="Password"
-            value={password} onChange={e => setPassword(e.target.value)}
-            onKeyDown={e => e.key === 'Enter' && handleSubmit()}
-          />
+          <div className="owl-login-password-wrap">
+            <input className="owl-input" style={{ minWidth: 0, width: '100%', boxSizing: 'border-box' }}
+              type={showPassword ? 'text' : 'password'} placeholder="Password"
+              value={password} onChange={e => setPassword(e.target.value)}
+              onKeyDown={e => e.key === 'Enter' && handleSubmit()}
+            />
+            <button
+              type="button"
+              className="owl-login-toggle-eye"
+              onClick={() => setShowPassword(v => !v)}
+            >
+              {showPassword ? 'ซ่อน' : 'แสดง'}
+            </button>
+          </div>
         </div>
 
         {/* Error */}

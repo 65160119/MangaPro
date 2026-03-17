@@ -131,6 +131,7 @@ export default function MangaDetail({
   showFavoriteButton,
   FavoriteButtonLarge,
   showProgressTab,
+  showRating = true,
 }) {
   if (!manga) return null
 
@@ -177,9 +178,11 @@ export default function MangaDetail({
               </div>
 
               {/* Rating */}
-              <div className="owl-rating-row">
-                <RatingStars mangaId={manga.id} />
-              </div>
+              {showRating && (
+                <div className="owl-rating-row">
+                  <RatingStars mangaId={manga.id} />
+                </div>
+              )}
 
               {/* Action buttons */}
               <div style={{ display: 'flex', gap: 8, marginTop: 14, flexWrap: 'wrap' }}>
