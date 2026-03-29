@@ -1,5 +1,5 @@
 import React, { useState } from 'react'
-import { Link } from 'react-router-dom'
+import { useNavigate } from 'react-router-dom'
 import supabase from '../lib/supabaseClient'
 import OwlbookStyles from '../components/OwlbookStyles'
 
@@ -8,6 +8,12 @@ export default function UpdatePassword() {
   const [status, setStatus] = useState(null)
   const [isError, setIsError] = useState(false)
   const [loading, setLoading] = useState(false)
+  const navigate = useNavigate()
+
+  const goBackToLogin = async () => {
+    try { await supabase.auth.signOut() } catch (e) { console.warn('signOut', e) }
+    navigate('/login')
+  }
 
   const handleSubmit = async () => {
     setStatus(null)
@@ -17,7 +23,10 @@ export default function UpdatePassword() {
       const { error } = await supabase.auth.updateUser({ password })
       if (error) throw error
       setIsError(false)
-      setStatus('เปลี่ยนรหัสผ่านสำเร็จแล้ว! คุณสามารถเข้าสู่ระบบได้เลย')
+      setStatus('เปลี่ยนรหัสผ่านสำเร็จแล้ว! โปรดเข้าสู่ระบบด้วยรหัสผ่านใหม่ของคุณ')
+      // เพื่อความปลอดภัย ออกจากระบบจากลิงก์รีเซ็ต แล้วให้ผู้ใช้ล็อกอินใหม่เอง
+      await supabase.auth.signOut()
+      navigate('/login')
     } catch (e) {
       setIsError(true)
       setStatus(e.message || String(e))
@@ -92,7 +101,9 @@ export default function UpdatePassword() {
         </button>
 
         <div className="owl-login-footer">
-          <Link to="/login" className="owl-login-link">← กลับไปหน้าเข้าสู่ระบบ</Link>
+          <button type="button" className="owl-login-link" onClick={goBackToLogin}>
+            ← กลับไปหน้าเข้าสู่ระบบ
+          </button>
         </div>
       </div>
     </div>

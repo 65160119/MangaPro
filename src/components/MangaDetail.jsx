@@ -282,16 +282,21 @@ export default function MangaDetail({
                       ))}
 
                       {onOpenFavModal && (
+                        (() => {
+                          const favPct = total ? pct(favCount) : (favCount > 0 ? 100 : 0)
+                          return (
                         <div className="owl-progress-row clickable" onClick={onOpenFavModal}>
                           <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: 5 }}>
                             <div className="owl-progress-label">♥ Favorite</div>
                             <div style={{ fontSize: 13, color: 'var(--owl-text-sub)' }}>{favCount}</div>
                           </div>
                           <div className="owl-progress-bar-bg">
-                            <div className="owl-progress-bar-fill" style={{ width: `${pct(favCount)}%`, background: 'var(--owl-gold)' }} />
+                            <div className="owl-progress-bar-fill" style={{ width: `${favPct}%`, background: 'var(--owl-gold)' }} />
                           </div>
                           <div style={{ fontSize: 11.5, color: 'var(--owl-accent)', marginTop: 3 }}>คลิกเพื่อดูรายชื่อ →</div>
                         </div>
+                          )
+                        })()
                       )}
 
                       <div style={{ marginTop: 16, padding: '12px 16px', borderRadius: 10, background: 'var(--owl-surface-2)', border: '1px solid var(--owl-border)', fontSize: 13, color: 'var(--owl-text-sub)' }}>

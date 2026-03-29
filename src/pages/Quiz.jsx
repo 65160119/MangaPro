@@ -17,10 +17,10 @@ function shuffle(arr) {
 
 const STEPS = [
   { key: 'tags',       label: 'แนวเรื่องที่อยากอ่าน',     sub: 'เลือกได้สูงสุด 2 แท็ก' },
-  { key: 'finished',   label: 'อยากอ่านเรื่องที่จบแล้วไหม?', sub: null },
-  { key: 'publisher',  label: 'สำนักพิมพ์',                sub: 'ไม่บังคับ' },
-  { key: 'mood',       label: 'อยากได้อารมณ์แบบไหน?',     sub: null },
-  { key: 'mc_gender',  label: 'ตัวเอกเพศอะไร?',           sub: null },
+  { key: 'finished',   label: 'อยากอ่านเรื่องที่จบแล้วไหม?', sub: 'ไม่บังคับ' },
+  { key: 'publisher',  label: 'สำนักพิมพ์',                sub: 'เลือกสำนักพิมพ์ที่ต้องการจะอ่าน' },
+  { key: 'mood',       label: 'อยากได้อารมณ์แบบไหน?',     sub: 'ไม่บังคับ' },
+  { key: 'mc_gender',  label: 'ตัวเอกเพศอะไร?',           sub: 'ไม่บังคับ' },
 ]
 
 export default function Quiz() {
@@ -311,7 +311,7 @@ export default function Quiz() {
               }
             </div>
             <div className="owl-quiz-nav">
-              <button className="owl-quiz-btn-next" onClick={() => setStep(1)} disabled={answer.tags.length === 0}>ถัดไป →</button>
+              <button className="owl-quiz-btn-next" onClick={() => setStep(1)} disabled={answer.tags.length === 0}>ถัดไป</button>
               <button className="owl-quiz-btn-skip" onClick={() => setStep(1)}>ข้าม</button>
             </div>
           </div>
@@ -328,7 +328,7 @@ export default function Quiz() {
               <OptionBtn active={answer.finished === null} onClick={() => onPick('finished', null)}>ไม่ระบุ</OptionBtn>
             </div>
             <div className="owl-quiz-nav">
-              <button className="owl-quiz-btn-next" onClick={() => setStep(2)}>ถัดไป →</button>
+              <button className="owl-quiz-btn-next" onClick={() => setStep(2)}>ถัดไป</button>
               <button className="owl-quiz-btn-back" onClick={() => setStep(0)}>← กลับ</button>
             </div>
           </div>
@@ -360,7 +360,7 @@ export default function Quiz() {
               </div>
             </div>
             <div className="owl-quiz-nav">
-              <button className="owl-quiz-btn-next" onClick={() => setStep(3)}>ถัดไป →</button>
+              <button className="owl-quiz-btn-next" onClick={() => setStep(3)}>ถัดไป</button>
               <button className="owl-quiz-btn-back" onClick={() => setStep(1)}>← กลับ</button>
             </div>
           </div>
@@ -378,7 +378,7 @@ export default function Quiz() {
               <OptionBtn active={answer.mood === null} onClick={() => onPick('mood', null)}>ไม่ระบุ</OptionBtn>
             </div>
             <div className="owl-quiz-nav">
-              <button className="owl-quiz-btn-next" onClick={() => setStep(4)}>ถัดไป →</button>
+              <button className="owl-quiz-btn-next" onClick={() => setStep(4)}>ถัดไป</button>
               <button className="owl-quiz-btn-back" onClick={() => setStep(2)}>← กลับ</button>
             </div>
           </div>

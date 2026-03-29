@@ -18,6 +18,9 @@ function HeaderAuth() {
   const isActive = (path) =>
     path === '/' ? location.pathname === '/' : location.pathname.startsWith(path)
 
+  // ซ่อน header แค่ตอนอยู่หน้า reset password จากลิงก์อีเมล
+  if (location.pathname.startsWith('/update-password')) return null
+
   return (
     <>
       <style>{`
